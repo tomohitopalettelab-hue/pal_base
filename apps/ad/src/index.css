@@ -1,0 +1,32 @@
+@import "tailwindcss";
+
+:root {
+  --orange: #F39800;
+  --orange-light: #FFB84D;
+  --orange-dark: #D47F00;
+  --orange-bg: #FFF3E0;
+}
+
+body {
+  margin: 0;
+  font-family: 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Noto Sans JP', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  background-color: #FFFAF5;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #ccc;
+  border-radius: 3px;
+}

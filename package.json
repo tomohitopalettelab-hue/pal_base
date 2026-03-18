@@ -1,30 +1,16 @@
 {
-  "name": "pal_base",
+  "name": "palette-lab",
   "private": true,
   "version": "0.0.0",
-  "type": "module",
+  "workspaces": [
+    "apps/base",
+    "apps/ad"
+  ],
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "lint": "eslint .",
-    "preview": "vite preview"
-  },
-  "dependencies": {
-    "lucide-react": "^0.577.0",
-    "react": "^19.2.4",
-    "react-dom": "^19.2.4"
-  },
-  "devDependencies": {
-    "@eslint/js": "^9.39.4",
-    "@tailwindcss/vite": "^4.2.1",
-    "@types/react": "^19.2.14",
-    "@types/react-dom": "^19.2.3",
-    "@vitejs/plugin-react": "^6.0.0",
-    "eslint": "^9.39.4",
-    "eslint-plugin-react-hooks": "^7.0.1",
-    "eslint-plugin-react-refresh": "^0.5.2",
-    "globals": "^17.4.0",
-    "tailwindcss": "^4.2.1",
-    "vite": "^8.0.0"
+    "dev:base": "npm run dev -w pal-base",
+    "dev:ad": "npm run dev -w pal-ad",
+    "build:base": "npm run build -w pal-base",
+    "build:ad": "npm run build -w pal-ad",
+    "build": "npm run build:base && npm run build:ad"
   }
 }
