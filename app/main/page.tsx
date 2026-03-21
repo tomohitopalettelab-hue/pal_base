@@ -157,7 +157,7 @@ function Dashboard({ onNavigate, onLogout }: { onNavigate: (state: AppState) => 
   ];
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="h-screen flex flex-col overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 bg-white border-b border-slate-200">
         <div className="flex items-center gap-2">
@@ -237,7 +237,7 @@ function CouponGenerator({ onBack }: { onBack: () => void }) {
   };
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="h-screen flex flex-col overflow-hidden">
       <div className="flex items-center gap-3 px-4 py-3 bg-white border-b border-slate-200">
         <button onClick={onBack} className="p-2 -ml-2 hover:bg-slate-100 rounded-lg"><ArrowLeft size={18} /></button>
         <div>
@@ -437,7 +437,7 @@ function BannerCanvas({ onBack }: { onBack: () => void }) {
   const previewH = sizeMode === 'square' ? 320 : 209;
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="h-screen flex flex-col overflow-hidden">
       <div className="flex items-center gap-3 px-4 py-3 bg-white border-b border-slate-200">
         <button onClick={onBack} className="p-2 -ml-2 hover:bg-slate-100 rounded-lg"><ArrowLeft size={18} /></button>
         <div>
@@ -638,7 +638,7 @@ function RichMenuBuilder({ onBack }: { onBack: () => void }) {
   };
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="h-screen flex flex-col overflow-hidden">
       <div className="flex items-center gap-3 px-4 py-3 bg-white border-b border-slate-200">
         <button onClick={onBack} className="p-2 -ml-2 hover:bg-slate-100 rounded-lg"><ArrowLeft size={18} /></button>
         <div>
@@ -830,7 +830,7 @@ function GbpProfileBuilder({ onBack }: { onBack: () => void }) {
   };
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="h-screen flex flex-col overflow-hidden">
       <div className="flex items-center gap-3 px-4 py-3 bg-white border-b border-slate-200">
         <button onClick={onBack} className="p-2 -ml-2 hover:bg-slate-100 rounded-lg"><ArrowLeft size={18} /></button>
         <div>
