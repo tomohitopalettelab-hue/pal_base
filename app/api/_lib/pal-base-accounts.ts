@@ -26,12 +26,12 @@ const normalize = (value: string | null | undefined) => String(value || '').trim
 
 const isPalBasePlanCode = (code: string): boolean => {
   const normalized = normalize(code).replace(/-/g, '_');
-  return normalized === 'pal_base_lite' || normalized === 'pal_base_standard';
+  return normalized === 'pal_base' || normalized === 'pal_base_lite' || normalized === 'pal_base_standard';
 };
 
 const isPalBaseStandardPlanCode = (code: string): boolean => {
   const normalized = normalize(code).replace(/-/g, '_');
-  return normalized === 'pal_base_standard';
+  return normalized === 'pal_base' || normalized === 'pal_base_standard';
 };
 
 const todayYmd = (): string => {
