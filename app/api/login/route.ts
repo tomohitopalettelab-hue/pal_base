@@ -1,9 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createSessionValue, SESSION_COOKIE_NAME, MAIN_SESSION_COOKIE_NAME, type SessionPayload } from '../../../lib/auth-session';
 
-const ADMIN_ID = process.env.ADMIN_ID || 'admin';
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '';
-
 export async function POST(req: Request) {
   try {
     const body = await req.json();
@@ -14,7 +11,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, error: 'IDとパスワードを入力してください。' }, { status: 400 });
     }
 
-    if (id !== ADMIN_ID || password !== ADMIN_PASSWORD) {
+    const adminId = process.env.ADMIN_ID || 'admin';
+    const adminPassword = process.env.ADMIN_PASSWORD || '';
+
+    if (id !== adminId || password !== adminPassword) {
       return NextResponse.json({ success: false, error: 'ログイン情報が違います。' }, { status: 401 });
     }
 
