@@ -606,9 +606,68 @@ function BannerCanvas({ onBack }: { onBack: () => void }) {
   );
 }
 
+// ── LINE Set Button ───────────────────────────────────────────────────────────
+
+function LineSetButton({ menuRef, cells, selectedLayout }: { menuRef: React.RefObject<HTMLDivElement | null>; cells: RichMenuCell[]; selectedLayout: RichMenuLayout }) {
+  const [status, setStatus] = useState<'idle' | 'setting' | 'done' | 'error'>('idle');
+  const [msg, setMsg] = useState('');
+
+  const setToLine = async () => {
+    if (!menuRef.current) return;
+    setStatus('setting');
+    try {
+      const outputW = 2500;
+      const outputH = selectedLayout.rows === 1 ? 843 : 1686;
+      const previewW = 340;
+      const scale = outputW / previewW;
+      const html2canvas = (await import('html2canvas')).default;
+      const canvas = await html2canvas(menuRef.current, { scale, useCORS: true });
+      const offscreen = document.createElement('canvas');
+      offscreen.width = outputW;
+      offscreen.height = outputH;
+      const ctx = offscreen.getContext('2d');
+      if (ctx) ctx.drawImage(canvas, 0, 0, outputW, outputH);
+      const imageBase64 = offscreen.toDataURL('image/png');
+
+      // Build LINE rich menu areas
+      const cellW = outputW / selectedLayout.cols;
+      const cellH = outputH / selectedLayout.rows;
+      const areas = selectedLayout.areas.map((area, idx) => {
+        const cell = cells[idx];
+        const url = cell?.url || '';
+        return {
+          bounds: { x: area.x * cellW, y: area.y * cellH, width: area.w * cellW, height: area.h * cellH },
+          action: url.startsWith('http') ? { type: 'uri' as const, uri: url } : { type: 'message' as const, text: cell?.label || 'メニュー' },
+        };
+      });
+
+      const res = await fetch('/api/line/set-richmenu', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageBase64, areas, rows: selectedLayout.rows }),
+      });
+      const data = await res.json();
+      if (data.success) { setStatus('done'); setMsg('LINEリッチメニューに反映しました！'); }
+      else { setStatus('error'); setMsg(data.error || '反映に失敗しました'); }
+    } catch { setStatus('error'); setMsg('通信エラーが発生しました'); }
+  };
+
+  return (
+    <div>
+      <button onClick={setToLine} disabled={status === 'setting'}
+        className="w-full py-3 text-white text-sm font-bold rounded-xl min-h-12 disabled:opacity-50 flex items-center justify-center gap-1"
+        style={{ backgroundColor: status === 'done' ? '#22c55e' : '#06C755' }}>
+        {status === 'setting' ? <Loader2 className="animate-spin" size={16} /> : status === 'done' ? <><Check size={16} /> 反映完了！</> : <><MessageCircle size={14} /> LINEにセットする</>}
+      </button>
+      {msg && status === 'error' && <p className="text-xs text-red-500 text-center mt-1">{msg}</p>}
+      {msg && status === 'done' && <p className="text-xs text-green-600 text-center mt-1">{msg}</p>}
+    </div>
+  );
+}
+
 // ── Feature 3: Rich Menu Builder ──────────────────────────────────────────────
 
-function RichMenuBuilder({ onBack }: { onBack: () => void }) {
+function RichMenuBuilder({ onBack, lineConnected }: { onBack: () => void; lineConnected: boolean }) {
   const [step, setStep] = useState(1);
   const [selectedLayout, setSelectedLayout] = useState<RichMenuLayout>(RICHMENU_LAYOUTS[0]);
   const [cells, setCells] = useState<RichMenuCell[]>([]);
@@ -823,6 +882,16 @@ function RichMenuBuilder({ onBack }: { onBack: () => void }) {
                   <Download size={14} /> 保存する
                 </button>
               </div>
+
+              {/* LINEにセットするボタン */}
+              {lineConnected ? (
+                <LineSetButton menuRef={menuRef} cells={cells} selectedLayout={selectedLayout} />
+              ) : (
+                <div className="bg-slate-50 rounded-xl p-3 text-center">
+                  <p className="text-xs text-slate-500">LINE連携が未設定です</p>
+                  <p className="text-[10px] text-slate-400">管理者にLINE連携の設定を依頼してください</p>
+                </div>
+              )}
             </>
           )}
         </div>
@@ -833,13 +902,15 @@ function RichMenuBuilder({ onBack }: { onBack: () => void }) {
 
 // ── Feature 4: GBP Profile Builder (プロフィールのみ) ─────────────────────────
 
-function GbpProfileBuilder({ onBack }: { onBack: () => void }) {
+function GbpProfileBuilder({ onBack, gbpConnected }: { onBack: () => void; gbpConnected: boolean }) {
   const [interviewStep, setInterviewStep] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [currentInput, setCurrentInput] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [result, setResult] = useState<GbpProfileOnlyResult | null>(null);
   const [error, setError] = useState('');
+  const [publishStatus, setPublishStatus] = useState<'idle' | 'publishing' | 'done' | 'error'>('idle');
+  const [publishMessage, setPublishMessage] = useState('');
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   const QUESTIONS = [
@@ -920,7 +991,32 @@ function GbpProfileBuilder({ onBack }: { onBack: () => void }) {
                 </div>
                 {result.profile.tips && <p className="text-xs text-slate-400 mt-3 italic">💡 {result.profile.tips}</p>}
               </div>
-              <button onClick={() => { setResult(null); setAnswers({}); setInterviewStep(0); }} className="w-full py-3 text-sm font-bold border border-slate-300 rounded-xl min-h-12 hover:bg-slate-50">もう一度作り直す</button>
+              {/* GBP反映ボタン */}
+              {gbpConnected ? (
+                <button
+                  onClick={async () => {
+                    setPublishStatus('publishing');
+                    try {
+                      const res = await fetch('/api/gbp/update-profile', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ profileText: result.profile.text }) });
+                      const data = await res.json();
+                      if (data.success) { setPublishStatus('done'); setPublishMessage('GBPプロフィールに反映しました！'); }
+                      else { setPublishStatus('error'); setPublishMessage(data.error || '反映に失敗しました'); }
+                    } catch { setPublishStatus('error'); setPublishMessage('通信エラーが発生しました'); }
+                  }}
+                  disabled={publishStatus === 'publishing'}
+                  className="w-full py-3 text-white text-sm font-bold rounded-xl min-h-12 disabled:opacity-50 flex items-center justify-center gap-1"
+                  style={{ backgroundColor: publishStatus === 'done' ? '#22c55e' : '#E53935' }}>
+                  {publishStatus === 'publishing' ? <Loader2 className="animate-spin" size={16} /> : publishStatus === 'done' ? <><Check size={16} /> 反映完了！</> : <><MapPin size={14} /> GBPに反映する</>}
+                </button>
+              ) : (
+                <div className="bg-slate-50 rounded-xl p-3 text-center">
+                  <p className="text-xs text-slate-500">GBP連携が未設定です</p>
+                  <p className="text-[10px] text-slate-400">管理者にGBP連携の設定を依頼してください</p>
+                </div>
+              )}
+              {publishMessage && publishStatus === 'error' && <p className="text-xs text-red-500 text-center">{publishMessage}</p>}
+
+              <button onClick={() => { setResult(null); setAnswers({}); setInterviewStep(0); setPublishStatus('idle'); setPublishMessage(''); }} className="w-full py-3 text-sm font-bold border border-slate-300 rounded-xl min-h-12 hover:bg-slate-50">もう一度作り直す</button>
             </div>
           )}
         </div>
@@ -1048,14 +1144,31 @@ function GbpPostGenerator({ onBack }: { onBack: () => void }) {
 export default function MainPage() {
   const [appState, setAppState] = useState<AppState>('login');
   const [paletteId, setPaletteId] = useState('');
+  const [gbpConnected, setGbpConnected] = useState(false);
+  const [lineConnected, setLineConnected] = useState(false);
 
   useEffect(() => {
     fetch('/api/main/session').then((r) => r.json()).then((data) => {
-      if (data.authenticated && data.paletteId) { setPaletteId(data.paletteId); setAppState('dashboard'); }
+      if (data.authenticated && data.paletteId) {
+        setPaletteId(data.paletteId);
+        setAppState('dashboard');
+        // 連携状態を取得
+        fetch('/api/main/settings').then((r2) => r2.json()).then((s) => {
+          setGbpConnected(!!s.gbpConnected);
+          setLineConnected(!!s.lineConnected);
+        }).catch(() => {});
+      }
     }).catch(() => {});
   }, []);
 
-  const handleLogin = (id: string) => { setPaletteId(id); setAppState('dashboard'); };
+  const handleLogin = (id: string) => {
+    setPaletteId(id);
+    setAppState('dashboard');
+    fetch('/api/main/settings').then((r) => r.json()).then((s) => {
+      setGbpConnected(!!s.gbpConnected);
+      setLineConnected(!!s.lineConnected);
+    }).catch(() => {});
+  };
   const handleLogout = async () => { await fetch('/api/logout', { method: 'POST' }); setPaletteId(''); setAppState('login'); };
   const goBack = () => setAppState('dashboard');
 
@@ -1063,8 +1176,8 @@ export default function MainPage() {
   if (appState === 'dashboard') return <Dashboard onNavigate={setAppState} onLogout={handleLogout} />;
   if (appState === 'coupon') return <CouponGenerator onBack={goBack} />;
   if (appState === 'banner') return <BannerCanvas onBack={goBack} />;
-  if (appState === 'richmenu') return <RichMenuBuilder onBack={goBack} />;
-  if (appState === 'gbp_profile') return <GbpProfileBuilder onBack={goBack} />;
+  if (appState === 'richmenu') return <RichMenuBuilder onBack={goBack} lineConnected={lineConnected} />;
+  if (appState === 'gbp_profile') return <GbpProfileBuilder onBack={goBack} gbpConnected={gbpConnected} />;
   if (appState === 'gbp_post') return <GbpPostGenerator onBack={goBack} />;
 
   return null;
