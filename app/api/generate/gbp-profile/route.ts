@@ -1,4 +1,4 @@
-import OpenAI from 'openai';
+import { GoogleGenAI } from '@google/genai';
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { parseSessionValue, MAIN_SESSION_COOKIE_NAME, isExpired } from '../../../../lib/auth-session';
@@ -6,10 +6,10 @@ import { parseSessionValue, MAIN_SESSION_COOKIE_NAME, isExpired } from '../../..
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const isRetryableError = (error: unknown): boolean => {
-  const status = (error as Record<string, unknown>)?.status as number | undefined;
-  if (status === 429 || status === 500 || status === 503) return true;
+  const code = Number((error as Record<string, unknown>)?.status || (error as Record<string, unknown>)?.code || 0);
+  if (code === 429 || code === 500 || code === 503 || code === 504) return true;
   const message = String((error as Record<string, unknown>)?.message || '').toLowerCase();
-  return message.includes('rate limit') || message.includes('overloaded') || message.includes('timeout');
+  return message.includes('rate limit') || message.includes('overloaded') || message.includes('timeout') || message.includes('unavailable');
 };
 
 type GbpProfileBody = {
@@ -30,9 +30,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, error: '認証が必要です。' }, { status: 401 });
     }
 
-    const apiKey = process.env.OPENAI_KEY_API || process.env.OPENAI_API_KEY || '';
+    const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY || '';
     if (!apiKey) {
-      return NextResponse.json({ success: false, error: 'OpenAI APIキーが設定されていません。' }, { status: 500 });
+      return NextResponse.json({ success: false, error: 'Gemini APIキーが設定されていません。' }, { status: 500 });
     }
 
     const body = (await req.json()) as GbpProfileBody;
@@ -41,7 +41,7 @@ export async function POST(req: Request) {
     const strength = String(body.strength || '').trim();
     const targetCustomer = String(body.targetCustomer || '').trim();
     const areaFeature = String(body.areaFeature || '').trim();
-    const message = String(body.message || '').trim();
+    const freeMessage = String(body.message || '').trim();
 
     if (!businessName || !businessType) {
       return NextResponse.json({ success: false, error: '店舗名と業種は必須です。' }, { status: 400 });
@@ -57,11 +57,11 @@ export async function POST(req: Request) {
 5. 各テンプレートは写真の撮り方アドバイス付き
 6. 日本語で回答する
 
-以下のJSON形式で返してください：
+以下のJSON形式で返してください（JSONのみ、説明不要）：
 {
   "profile": {
     "text": "GBPプロフィール文（750文字以内）",
-    "keywords": ["SEOキーワード1", "SEOキーワード2", "..."],
+    "keywords": ["SEOキーワード1", "SEOキーワード2"],
     "tips": "プロフィールをさらに良くするためのアドバイス"
   },
   "postTemplates": [
@@ -92,27 +92,27 @@ export async function POST(req: Request) {
       strength ? `一番のこだわり: ${strength}` : '',
       targetCustomer ? `ターゲット客層: ${targetCustomer}` : '',
       areaFeature ? `地域の特徴: ${areaFeature}` : '',
-      message ? `伝えたいメッセージ: ${message}` : '',
+      freeMessage ? `伝えたいメッセージ: ${freeMessage}` : '',
     ].filter(Boolean).join('\n');
 
-    const openai = new OpenAI({ apiKey });
-    const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+    const ai = new GoogleGenAI({ apiKey });
+    const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash-lite';
 
     let lastError: unknown = null;
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        const completion = await openai.chat.completions.create({
+        const response = await ai.models.generateContent({
           model,
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userPrompt },
-          ],
-          response_format: { type: 'json_object' },
-          temperature: 0.7,
-          max_tokens: 3000,
+          contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
+          config: {
+            systemInstruction: systemPrompt,
+            temperature: 0.7,
+            maxOutputTokens: 3000,
+            responseMimeType: 'application/json',
+          },
         });
 
-        const raw = completion.choices?.[0]?.message?.content || '{}';
+        const raw = response.text || '{}';
         const parsed = JSON.parse(raw);
         return NextResponse.json({ success: true, ...parsed });
       } catch (err) {
@@ -125,8 +125,8 @@ export async function POST(req: Request) {
       }
     }
 
-    const message2 = lastError instanceof Error ? lastError.message : 'AI生成に失敗しました。';
-    return NextResponse.json({ success: false, error: message2 }, { status: 500 });
+    const errMsg = lastError instanceof Error ? lastError.message : 'AI生成に失敗しました。';
+    return NextResponse.json({ success: false, error: errMsg }, { status: 500 });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'エラーが発生しました。';
     return NextResponse.json({ success: false, error: message }, { status: 500 });

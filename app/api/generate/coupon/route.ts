@@ -1,4 +1,4 @@
-import OpenAI from 'openai';
+import { GoogleGenAI } from '@google/genai';
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { parseSessionValue, MAIN_SESSION_COOKIE_NAME, isExpired } from '../../../../lib/auth-session';
@@ -7,10 +7,10 @@ import { getPresetByType, getSeasonKey } from '../../_lib/business-presets';
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const isRetryableError = (error: unknown): boolean => {
-  const status = (error as Record<string, unknown>)?.status as number | undefined;
-  if (status === 429 || status === 500 || status === 503) return true;
+  const code = Number((error as Record<string, unknown>)?.status || (error as Record<string, unknown>)?.code || 0);
+  if (code === 429 || code === 500 || code === 503 || code === 504) return true;
   const message = String((error as Record<string, unknown>)?.message || '').toLowerCase();
-  return message.includes('rate limit') || message.includes('overloaded') || message.includes('timeout');
+  return message.includes('rate limit') || message.includes('overloaded') || message.includes('timeout') || message.includes('unavailable');
 };
 
 type CouponGenerateBody = {
@@ -30,9 +30,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, error: '認証が必要です。' }, { status: 401 });
     }
 
-    const apiKey = process.env.OPENAI_KEY_API || process.env.OPENAI_API_KEY || '';
+    const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY || '';
     if (!apiKey) {
-      return NextResponse.json({ success: false, error: 'OpenAI APIキーが設定されていません。' }, { status: 500 });
+      return NextResponse.json({ success: false, error: 'Gemini APIキーが設定されていません。' }, { status: 500 });
     }
 
     const body = (await req.json()) as CouponGenerateBody;
@@ -62,7 +62,7 @@ export async function POST(req: Request) {
 ${preset ? `業種特性:\n効果的なフック: ${preset.hooks.join('、')}\n避けるべきパターン: ${preset.avoidPatterns.join('、')}` : ''}
 ${seasonTip ? `今の季節のアドバイス: ${seasonTip}` : ''}
 
-以下のJSON形式で3パターン返してください：
+以下のJSON形式で3パターン返してください（JSONのみ、説明不要）：
 {
   "coupons": [
     {
@@ -83,24 +83,24 @@ ${seasonTip ? `今の季節のアドバイス: ${seasonTip}` : ''}
       freeText ? `追加情報: ${freeText}` : '',
     ].filter(Boolean).join('\n');
 
-    const openai = new OpenAI({ apiKey });
-    const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+    const ai = new GoogleGenAI({ apiKey });
+    const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash-lite';
 
     let lastError: unknown = null;
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        const completion = await openai.chat.completions.create({
+        const response = await ai.models.generateContent({
           model,
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userPrompt },
-          ],
-          response_format: { type: 'json_object' },
-          temperature: 0.8,
-          max_tokens: 2000,
+          contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
+          config: {
+            systemInstruction: systemPrompt,
+            temperature: 0.8,
+            maxOutputTokens: 2000,
+            responseMimeType: 'application/json',
+          },
         });
 
-        const raw = completion.choices?.[0]?.message?.content || '{}';
+        const raw = response.text || '{}';
         const parsed = JSON.parse(raw);
         return NextResponse.json({ success: true, ...parsed });
       } catch (err) {
