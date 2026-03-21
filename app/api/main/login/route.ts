@@ -30,12 +30,15 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, error: 'ログイン情報の取得に失敗しました。' }, { status: 500 });
     }
 
-    const canLogin = await canLoginPalBaseByPaletteId(paletteId);
-    if (!canLogin) {
-      return NextResponse.json(
-        { success: false, error: 'Pal Base のご契約が必要です。' },
-        { status: 403 },
-      );
+    // プラン契約チェック（SKIP_PLAN_CHECK=1 で全アカウント許可）
+    if (process.env.SKIP_PLAN_CHECK !== '1') {
+      const canLogin = await canLoginPalBaseByPaletteId(paletteId);
+      if (!canLogin) {
+        return NextResponse.json(
+          { success: false, error: 'Pal Base のご契約が必要です。' },
+          { status: 403 },
+        );
+      }
     }
 
     const session: SessionPayload = {
