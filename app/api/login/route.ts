@@ -14,9 +14,6 @@ export async function POST(req: Request) {
     const adminId = process.env.ADMIN_ID || 'admin';
     const adminPassword = process.env.ADMIN_PASSWORD || '';
 
-    console.log('[admin-login] input id:', JSON.stringify(id), 'env ADMIN_ID:', JSON.stringify(adminId), 'match:', id === adminId);
-    console.log('[admin-login] password match:', password === adminPassword, 'env set:', !!adminPassword);
-
     if (id !== adminId || password !== adminPassword) {
       return NextResponse.json({ success: false, error: 'ログイン情報が違います。' }, { status: 401 });
     }
