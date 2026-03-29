@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import {
-  Users, LogOut, RefreshCw, CheckCircle, AlertCircle, ArrowLeft, ChevronDown, ChevronRight,
-  MapPin, MessageCircle, ExternalLink, Loader2, X, Link2, Eye, EyeOff, Settings,
+  Users, LogOut, RefreshCw, AlertCircle, ArrowLeft, ChevronDown, ChevronRight,
+  MessageCircle, ExternalLink, Loader2, X, Eye, EyeOff, Settings, Globe,
 } from 'lucide-react';
 
 type Account = {
@@ -15,95 +15,13 @@ type Account = {
 };
 
 type CustomerSettings = {
-  gbpConnected: boolean;
-  gbpLocationId: string | null;
   lineConnected: boolean;
   lineRichMenuId: string | null;
+  qrCodes: { label: string; url: string }[];
 };
 
 const ACCENT = '#8CC63F';
 const ACCENT_LIGHT = '#EBF5E0';
-
-// ── GBP Setup Guide ───────────────────────────────────────────────────────────
-
-function GbpSetupPanel({ paletteId, settings, onRefresh }: { paletteId: string; settings: CustomerSettings; onRefresh: () => void }) {
-  const [expandedStep, setExpandedStep] = useState<number | null>(null);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-
-  const refreshToken = async () => {
-    setIsRefreshing(true);
-    try {
-      await fetch('/api/oauth/gbp/refresh', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ paletteId }) });
-      onRefresh();
-    } catch { /* ignore */ }
-    finally { setIsRefreshing(false); }
-  };
-
-  const steps = [
-    { title: 'Googleアカウントの準備', desc: 'ビジネス用のGoogleアカウントが必要です。個人用と分けることを推奨します。', link: null },
-    { title: 'Googleビジネスプロフィールの作成', desc: 'Google検索またはGoogleマップで「ビジネスプロフィール」を検索し、お店の情報を登録します。', link: 'https://business.google.com/' },
-    { title: 'オーナー確認の完了', desc: 'Googleからハガキ・電話・メールのいずれかで本人確認が届きます。指示に従って確認を完了してください。', link: null },
-    { title: 'OAuth連携（このボタンから）', desc: '上記3ステップ完了後、下のボタンでGBPとPal Baseを連携します。', link: null },
-  ];
-
-  return (
-    <div className="bg-white rounded-2xl border border-slate-200 p-4">
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-          <MapPin size={16} style={{ color: '#E53935' }} />
-          <h3 className="text-sm font-bold text-slate-800">GBPセットアップ</h3>
-        </div>
-        {settings.gbpConnected ? (
-          <span className="text-[10px] font-bold text-green-600 bg-green-50 px-2 py-0.5 rounded-full">✅ 接続済み</span>
-        ) : (
-          <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">未接続</span>
-        )}
-      </div>
-
-      {/* Step-by-step guide */}
-      <div className="space-y-1 mb-3">
-        {steps.map((step, i) => (
-          <div key={i} className="border border-slate-100 rounded-xl overflow-hidden">
-            <button onClick={() => setExpandedStep(expandedStep === i ? null : i)}
-              className="w-full flex items-center gap-2 p-2.5 text-left hover:bg-slate-50">
-              <span className="w-5 h-5 rounded-full bg-slate-100 flex items-center justify-center text-[10px] font-bold text-slate-500 flex-shrink-0">{i + 1}</span>
-              <span className="text-xs font-bold text-slate-700 flex-1">{step.title}</span>
-              {expandedStep === i ? <ChevronDown size={12} className="text-slate-400" /> : <ChevronRight size={12} className="text-slate-400" />}
-            </button>
-            {expandedStep === i && (
-              <div className="px-3 pb-3 text-xs text-slate-500">
-                <p>{step.desc}</p>
-                {step.link && (
-                  <a href={step.link} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 mt-1.5 text-blue-500 hover:underline">
-                    <ExternalLink size={10} /> 管理画面を開く
-                  </a>
-                )}
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
-
-      {/* Actions */}
-      <div className="flex gap-2">
-        <a href={`/api/oauth/gbp?paletteId=${encodeURIComponent(paletteId)}`}
-          className="flex-1 flex items-center justify-center gap-1 py-2.5 text-white text-xs font-bold rounded-xl min-h-10"
-          style={{ backgroundColor: settings.gbpConnected ? '#64748b' : ACCENT }}>
-          <Link2 size={12} /> {settings.gbpConnected ? '再連携する' : 'GBP OAuth連携'}
-        </a>
-        {settings.gbpConnected && (
-          <button onClick={refreshToken} disabled={isRefreshing}
-            className="px-3 py-2.5 text-xs border border-slate-300 rounded-xl min-h-10 hover:bg-slate-50 disabled:opacity-50">
-            {isRefreshing ? <Loader2 className="animate-spin" size={12} /> : <RefreshCw size={12} />}
-          </button>
-        )}
-      </div>
-      {settings.gbpLocationId && (
-        <p className="text-[10px] text-slate-400 mt-2 truncate">Location: {settings.gbpLocationId}</p>
-      )}
-    </div>
-  );
-}
 
 // ── LINE Setup Guide ──────────────────────────────────────────────────────────
 
@@ -210,6 +128,69 @@ function LineSetupPanel({ paletteId, settings, onRefresh }: { paletteId: string;
   );
 }
 
+// ── QR Code Setup ─────────────────────────────────────────────────────────────
+
+function QrCodeSetupPanel({ paletteId, settings, onRefresh }: { paletteId: string; settings: CustomerSettings; onRefresh: () => void }) {
+  const [codes, setCodes] = useState<{ label: string; url: string }[]>(settings.qrCodes?.length ? settings.qrCodes : [{ label: '', url: '' }]);
+  const [isSaving, setIsSaving] = useState(false);
+  const [message, setMessage] = useState('');
+
+  const save = async () => {
+    setIsSaving(true);
+    setMessage('');
+    try {
+      const filtered = codes.filter(c => c.label.trim() || c.url.trim());
+      const res = await fetch('/api/admin/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paletteId, qrCodes: filtered }),
+      });
+      if (res.ok) { setMessage('✅ 保存しました'); onRefresh(); }
+      else setMessage('❌ 保存に失敗しました');
+    } catch { setMessage('❌ 通信エラー'); }
+    finally { setIsSaving(false); }
+  };
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200 p-4">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <Globe size={16} style={{ color: ACCENT }} />
+          <h3 className="text-sm font-bold text-slate-800">QRコード設定</h3>
+        </div>
+        <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">最大3個</span>
+      </div>
+      <p className="text-[10px] text-slate-500 mb-3">チラシのフッターに表示するQRコードのURLを設定します。</p>
+
+      <div className="space-y-2 mb-3">
+        {codes.map((qr, i) => (
+          <div key={i} className="flex gap-2 items-center">
+            <input type="text" value={qr.label} onChange={(e) => { const n = [...codes]; n[i] = { ...n[i], label: e.target.value }; setCodes(n); }}
+              placeholder="ラベル（例: LINE）" className="w-20 px-2 py-1.5 text-xs border border-slate-300 rounded-lg min-h-9" />
+            <input type="text" value={qr.url} onChange={(e) => { const n = [...codes]; n[i] = { ...n[i], url: e.target.value }; setCodes(n); }}
+              placeholder="URL（例: https://lin.ee/xxx）" className="flex-1 px-2 py-1.5 text-xs border border-slate-300 rounded-lg min-h-9" />
+            {codes.length > 1 && (
+              <button onClick={() => setCodes(codes.filter((_, j) => j !== i))} className="p-1 text-slate-400 hover:text-red-500"><X size={14} /></button>
+            )}
+          </div>
+        ))}
+        {codes.length < 3 && (
+          <button onClick={() => setCodes([...codes, { label: '', url: '' }])}
+            className="flex items-center gap-1 px-3 py-1.5 text-[10px] text-slate-500 border border-dashed border-slate-300 rounded-lg hover:border-slate-400">
+            + QRコードを追加
+          </button>
+        )}
+      </div>
+
+      <button onClick={save} disabled={isSaving}
+        className="w-full py-2.5 text-white text-xs font-bold rounded-xl min-h-10 disabled:opacity-50" style={{ backgroundColor: ACCENT }}>
+        {isSaving ? <Loader2 className="animate-spin mx-auto" size={14} /> : 'QRコード設定を保存'}
+      </button>
+      {message && <p className="text-xs text-center mt-2">{message}</p>}
+    </div>
+  );
+}
+
 // ── Main Admin Page ───────────────────────────────────────────────────────────
 
 export default function AdminPage() {
@@ -234,11 +215,8 @@ export default function AdminPage() {
   // URL params from OAuth callback
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const gbpError = params.get('gbp_error');
-    const gbpConnected = params.get('gbp_connected');
     const paletteId = params.get('paletteId');
-    if (gbpError) setError(decodeURIComponent(gbpError));
-    if (gbpConnected && paletteId) {
+    if (paletteId) {
       const acc = accounts.find((a) => a.paletteId === paletteId);
       if (acc) { setSelectedAccount(acc); loadSettings(paletteId); }
     }
@@ -260,7 +238,7 @@ export default function AdminPage() {
       const res = await fetch(`/api/admin/settings?paletteId=${encodeURIComponent(paletteId)}`);
       const data = await res.json();
       if (data.success) setCustomerSettings(data.settings);
-    } catch { setCustomerSettings({ gbpConnected: false, gbpLocationId: null, lineConnected: false, lineRichMenuId: null }); }
+    } catch { setCustomerSettings({ lineConnected: false, lineRichMenuId: null, qrCodes: [] }); }
   };
 
   const selectAccount = (acc: Account) => {
@@ -369,8 +347,8 @@ export default function AdminPage() {
                 <div className="text-center py-8"><Loader2 className="animate-spin mx-auto" size={24} style={{ color: ACCENT }} /></div>
               ) : (
                 <>
-                  <GbpSetupPanel paletteId={selectedAccount.paletteId} settings={customerSettings} onRefresh={() => loadSettings(selectedAccount.paletteId)} />
                   <LineSetupPanel paletteId={selectedAccount.paletteId} settings={customerSettings} onRefresh={() => loadSettings(selectedAccount.paletteId)} />
+                  <QrCodeSetupPanel paletteId={selectedAccount.paletteId} settings={customerSettings} onRefresh={() => loadSettings(selectedAccount.paletteId)} />
                 </>
               )}
             </div>

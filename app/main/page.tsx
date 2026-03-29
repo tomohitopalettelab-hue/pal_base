@@ -4,18 +4,20 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Sparkles, Wand2, Download, ArrowLeft, LogOut, Loader2, Copy, Check,
   UtensilsCrossed, Scissors, Hammer, Building2, ShoppingBag, Heart,
-  Image as ImageIcon, LayoutGrid, MessageSquare, MapPin, ChevronRight,
+  Image as ImageIcon, LayoutGrid, MapPin, ChevronRight,
   CalendarCheck, Phone, Ticket, MessageCircle, Instagram, Globe, Bell,
   Users, Store, Camera, Gift, HelpCircle, Mail, Plus, Palette, Share2,
-  X, FileText, PenTool, Megaphone, Link2, Shuffle,
+  X, FileText, PenTool, Link2, Shuffle, Send,
 } from 'lucide-react';
 import { BANNER_TEMPLATES, COLOR_PALETTES, type BannerTemplate, type ColorPalette } from './banner-templates';
+import { FLYER_SIZES, FLYER_TASTES, getFlyerTaste, getFlyerSize } from './flyer-templates';
+import type { FlyerTaste } from './flyer-templates';
 import { RICHMENU_ICONS } from './richmenu-icons';
 import { RICHMENU_LAYOUTS, type RichMenuLayout } from './richmenu-layouts';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type AppState = 'login' | 'dashboard' | 'coupon' | 'banner' | 'richmenu' | 'gbp_profile' | 'gbp_post';
+type AppState = 'login' | 'dashboard' | 'coupon' | 'banner' | 'richmenu' | 'flyer';
 
 type CouponResult = {
   hookTitle: string;
@@ -23,14 +25,6 @@ type CouponResult = {
   conditions: string;
   validityPeriod: string;
   psychologyNote: string;
-};
-
-type GbpProfileOnlyResult = {
-  profile: { text: string; keywords: string[]; tips: string };
-};
-
-type GbpPostResult = {
-  post: { title: string; body: string; cta: string; hashtags: string[]; photoTip: string };
 };
 
 type RichMenuCell = {
@@ -65,15 +59,6 @@ const LUCIDE_ICON_MAP: Record<string, React.ComponentType<{ size?: number; color
   CalendarCheck, UtensilsCrossed, MapPin, Ticket, Phone, MessageCircle,
   Instagram, Globe, Bell, Users, Store, Camera, Gift, Heart, HelpCircle, Mail,
 };
-
-const GBP_POST_TYPES = [
-  { value: 'こだわり紹介', label: 'こだわり紹介', icon: Sparkles, desc: 'お店の強みやこだわりを発信' },
-  { value: 'スタッフ紹介', label: 'スタッフ紹介', icon: Users, desc: 'スタッフの人柄が伝わる投稿' },
-  { value: 'お客様の声', label: 'お客様の声', icon: MessageCircle, desc: 'お客様からの嬉しい声を紹介' },
-  { value: '新メニュー・新商品', label: '新メニュー・新商品', icon: Plus, desc: '新しいメニューや商品を告知' },
-  { value: 'イベント・キャンペーン', label: 'イベント・キャンペーン', icon: Megaphone, desc: 'キャンペーン情報を発信' },
-  { value: '日常・裏側', label: '日常・裏側', icon: Camera, desc: 'お店の裏側や日常を見せる' },
-];
 
 // ── Utility ───────────────────────────────────────────────────────────────────
 
@@ -186,16 +171,14 @@ function Dashboard({ onNavigate, onLogout }: { onNavigate: (state: AppState) => 
     { state: 'coupon' as AppState, icon: Sparkles, title: 'クーポン・ジェネレーター', desc: '心理学ベースの「指が動く」クーポンをAI生成', color: '#8CC63F' },
     { state: 'banner' as AppState, icon: ImageIcon, title: 'バナー自動キャンバス', desc: '写真1枚からGBP・LINE用バナーを即作成', color: '#F39800' },
     { state: 'richmenu' as AppState, icon: LayoutGrid, title: 'リッチメニュー・ビルダー', desc: 'LINEのリッチメニューをかんたんデザイン', color: '#2196F3' },
-    { state: 'gbp_profile' as AppState, icon: MapPin, title: 'GBPプロフィール構成', desc: 'Googleマップで選ばれる最強プロフィール', color: '#E53935' },
-    { state: 'gbp_post' as AppState, icon: FileText, title: 'GBP投稿テンプレート', desc: 'MEOに強い投稿文をAIが作成', color: '#9C27B0' },
+    { state: 'flyer' as AppState, icon: FileText, title: 'チラシ制作', desc: '写真1枚からプロのチラシを即作成', color: '#9C27B0' },
   ];
 
   const createMenuItems = [
     { state: 'coupon' as AppState, icon: Sparkles, label: 'クーポン' },
     { state: 'banner' as AppState, icon: ImageIcon, label: 'バナー画像' },
     { state: 'richmenu' as AppState, icon: LayoutGrid, label: 'リッチメニュー' },
-    { state: 'gbp_profile' as AppState, icon: MapPin, label: 'GBPプロフィール' },
-    { state: 'gbp_post' as AppState, icon: FileText, label: 'GBP投稿' },
+    { state: 'flyer' as AppState, icon: FileText, label: 'チラシ' },
   ];
 
   return (
@@ -325,7 +308,7 @@ function Dashboard({ onNavigate, onLogout }: { onNavigate: (state: AppState) => 
 
 // ── Feature 1: Coupon Generator ───────────────────────────────────────────────
 
-function CouponGenerator({ onBack }: { onBack: () => void }) {
+function CouponGenerator({ onBack, lineConnected, hasPalOpt, paletteId }: { onBack: () => void; lineConnected: boolean; hasPalOpt: boolean; paletteId: string }) {
   const [step, setStep] = useState(1);
   const [businessType, setBusinessType] = useState('');
   const [businessName, setBusinessName] = useState('');
@@ -335,7 +318,32 @@ function CouponGenerator({ onBack }: { onBack: () => void }) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [results, setResults] = useState<CouponResult[]>([]);
   const [error, setError] = useState('');
+  const [lineSendCoupon, setLineSendCoupon] = useState<CouponResult | null>(null);
+  const [publishingIdx, setPublishingIdx] = useState<number | null>(null);
+  const [publishResults, setPublishResults] = useState<Record<number, { success: boolean; message: string }>>({});
   const generateTriggered = useRef(false);
+
+  const handlePublishCouponToOpt = async (coupon: CouponResult, idx: number) => {
+    setPublishingIdx(idx);
+    try {
+      const copyText = `${coupon.hookTitle}\n${coupon.description}\n条件: ${coupon.conditions}\n有効期間: ${coupon.validityPeriod}`;
+      const res = await fetch('/api/publish-to-opt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contentType: 'coupon', copyText, paletteId }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setPublishResults((prev) => ({ ...prev, [idx]: { success: true, message: 'pal_opt に投稿が作成されました。' } }));
+      } else {
+        setPublishResults((prev) => ({ ...prev, [idx]: { success: false, message: data.error || '投稿に失敗しました' } }));
+      }
+    } catch {
+      setPublishResults((prev) => ({ ...prev, [idx]: { success: false, message: '通信エラーが発生しました' } }));
+    } finally {
+      setPublishingIdx(null);
+    }
+  };
 
   const generate = async () => {
     setIsGenerating(true);
@@ -445,7 +453,23 @@ function CouponGenerator({ onBack }: { onBack: () => void }) {
                   <div key={i} className="bg-white rounded-2xl border border-slate-200 p-4 md:p-5">
                     <div className="flex items-start justify-between gap-2 mb-2">
                       <span className="text-[10px] font-bold px-2 py-0.5 rounded-full text-white" style={{ backgroundColor: ACCENT }}>パターン {i + 1}</span>
-                      <CopyButton text={`${r.hookTitle}\n${r.description}\n条件: ${r.conditions}\n有効期間: ${r.validityPeriod}`} />
+                      <div className="flex items-center gap-1">
+                        <CopyButton text={`${r.hookTitle}\n${r.description}\n条件: ${r.conditions}\n有効期間: ${r.validityPeriod}`} />
+                        <button onClick={() => setLineSendCoupon(r)}
+                          className="flex items-center gap-1 text-xs px-2 py-1 rounded-lg text-white transition-colors min-h-8 font-bold"
+                          style={{ backgroundColor: '#06C755' }}>
+                          <MessageCircle size={12} /> LINE送信
+                        </button>
+                        {hasPalOpt && (
+                          <button onClick={() => handlePublishCouponToOpt(r, i)}
+                            disabled={publishingIdx === i}
+                            className="flex items-center gap-1 text-xs px-2 py-1 rounded-lg text-white transition-colors min-h-8 font-bold disabled:opacity-50"
+                            style={{ backgroundColor: '#F39800' }}>
+                            {publishingIdx === i ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
+                            {publishingIdx === i ? '投稿中...' : '一括投稿'}
+                          </button>
+                        )}
+                      </div>
                     </div>
                     <p className="text-base md:text-lg font-black text-slate-800 mb-2 leading-tight">{r.hookTitle}</p>
                     <p className="text-sm text-slate-600 mb-3">{r.description}</p>
@@ -454,6 +478,11 @@ function CouponGenerator({ onBack }: { onBack: () => void }) {
                       <span className="px-2 py-1 bg-slate-100 rounded-lg text-slate-600">📅 {r.validityPeriod}</span>
                     </div>
                     <p className="text-[10px] text-slate-400 mt-2 italic">💡 {r.psychologyNote}</p>
+                    {publishResults[i] && (
+                      <p className={`text-[10px] mt-2 ${publishResults[i].success ? 'text-green-600' : 'text-red-500'}`}>
+                        {publishResults[i].message}
+                      </p>
+                    )}
                   </div>
                 ))}
               </div>
@@ -463,13 +492,18 @@ function CouponGenerator({ onBack }: { onBack: () => void }) {
           )}
         </div>
       </div>
+
+      {/* LINE Send Modal */}
+      {lineSendCoupon && (
+        <LineSendModal coupon={lineSendCoupon} onClose={() => setLineSendCoupon(null)} lineConnected={lineConnected} />
+      )}
     </div>
   );
 }
 
 // ── Feature 2: Banner Canvas ──────────────────────────────────────────────────
 
-function BannerCanvas({ onBack }: { onBack: () => void }) {
+function BannerCanvas({ onBack, hasPalOpt, paletteId }: { onBack: () => void; hasPalOpt: boolean; paletteId: string }) {
   const [step, setStep] = useState(1);
   const [photo, setPhoto] = useState<string | null>(null);
   const [selectedTemplate, setSelectedTemplate] = useState<BannerTemplate>(BANNER_TEMPLATES[0]);
@@ -480,7 +514,35 @@ function BannerCanvas({ onBack }: { onBack: () => void }) {
   const [ctaText, setCtaText] = useState('詳しくはこちら');
   const [keyword, setKeyword] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isPublishing, setIsPublishing] = useState(false);
+  const [publishResult, setPublishResult] = useState<{ success: boolean; message: string } | null>(null);
   const bannerRef = useRef<HTMLDivElement>(null);
+
+  const handlePublishToOpt = async () => {
+    if (!bannerRef.current) return;
+    setIsPublishing(true);
+    setPublishResult(null);
+    try {
+      const html2canvas = (await import('html2canvas')).default;
+      const canvas = await html2canvas(bannerRef.current, { scale: 2, useCORS: true });
+      const imageBase64 = canvas.toDataURL('image/png');
+      const res = await fetch('/api/publish-to-opt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageBase64, contentType: 'banner', copyText: `${mainCopy}\n${subCopy}`, paletteId }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setPublishResult({ success: true, message: 'pal_opt に投稿が作成されました。pal_opt で確認・投稿してください。' });
+      } else {
+        setPublishResult({ success: false, message: data.error || '投稿の作成に失敗しました' });
+      }
+    } catch {
+      setPublishResult({ success: false, message: '通信エラーが発生しました' });
+    } finally {
+      setIsPublishing(false);
+    }
+  };
 
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -598,6 +660,21 @@ function BannerCanvas({ onBack }: { onBack: () => void }) {
                   <Download size={14} /> 保存する
                 </button>
               </div>
+              {hasPalOpt && (
+                <div>
+                  <button onClick={handlePublishToOpt} disabled={isPublishing}
+                    className="w-full flex items-center justify-center gap-2 py-3 text-white text-sm font-bold rounded-xl min-h-12 disabled:opacity-50 transition-colors"
+                    style={{ backgroundColor: '#F39800' }}>
+                    {isPublishing ? <Loader2 className="animate-spin" size={14} /> : <Send size={14} />}
+                    {isPublishing ? '投稿作成中...' : '全メディアに一括投稿'}
+                  </button>
+                  {publishResult && (
+                    <p className={`text-xs text-center mt-2 ${publishResult.success ? 'text-green-600' : 'text-red-500'}`}>
+                      {publishResult.message}
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -900,240 +977,763 @@ function RichMenuBuilder({ onBack, lineConnected }: { onBack: () => void; lineCo
   );
 }
 
-// ── Feature 4: GBP Profile Builder (プロフィールのみ) ─────────────────────────
+// ── Feature 4: Flyer Builder ──────────────────────────────────────────────────
 
-function GbpProfileBuilder({ onBack, gbpConnected }: { onBack: () => void; gbpConnected: boolean }) {
-  const [interviewStep, setInterviewStep] = useState(0);
-  const [answers, setAnswers] = useState<Record<string, string>>({});
-  const [currentInput, setCurrentInput] = useState('');
+type FlyerTexts = {
+  catchCopy: string;
+  subCopy: string;
+  bodyText: string;
+  couponText: string;
+  cta: string;
+  period: string;
+};
+
+type FlyerFont = { id: string; name: string; family: string; preview: string };
+const FLYER_FONTS: FlyerFont[] = [
+  { id: 'gothic', name: 'ゴシック', family: '"Noto Sans JP", sans-serif', preview: 'Aa あ' },
+  { id: 'mincho', name: '明朝', family: '"Noto Serif JP", serif', preview: 'Aa あ' },
+  { id: 'maru', name: '丸ゴシック', family: '"Zen Maru Gothic", sans-serif', preview: 'Aa あ' },
+  { id: 'rounded', name: 'ラウンド', family: '"M PLUS Rounded 1c", sans-serif', preview: 'Aa あ' },
+  { id: 'shippori', name: '上品明朝', family: '"Shippori Mincho", serif', preview: 'Aa あ' },
+  { id: 'zen', name: 'モダン', family: '"Zen Kaku Gothic New", sans-serif', preview: 'Aa あ' },
+];
+
+function FlyerBuilder({ onBack, savedQrCodes, dbIndustry, hasPalOpt, paletteId }: { onBack: () => void; savedQrCodes: { label: string; url: string }[]; dbIndustry: string; hasPalOpt: boolean; paletteId: string }) {
+  const [step, setStep] = useState(1);
+  const [selectedSize, setSelectedSize] = useState<(typeof FLYER_SIZES)[number]>(FLYER_SIZES[0]);
+  const [selectedTaste, setSelectedTaste] = useState<FlyerTaste>(FLYER_TASTES[0]);
+  const [selectedFont, setSelectedFont] = useState(FLYER_FONTS[0]);
+  const [photo, setPhoto] = useState<string | null>(null);
+  const [businessType, setBusinessType] = useState(dbIndustry);
+  const [keyword, setKeyword] = useState('');
+  const [flyerPurpose, setFlyerPurpose] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
-  const [result, setResult] = useState<GbpProfileOnlyResult | null>(null);
   const [error, setError] = useState('');
-  const [publishStatus, setPublishStatus] = useState<'idle' | 'publishing' | 'done' | 'error'>('idle');
-  const [publishMessage, setPublishMessage] = useState('');
-  const chatEndRef = useRef<HTMLDivElement>(null);
+  const [isFlyerPublishing, setIsFlyerPublishing] = useState(false);
+  const [flyerPublishResult, setFlyerPublishResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [texts, setTexts] = useState<FlyerTexts>({
+    catchCopy: '', subCopy: '', bodyText: '', couponText: '', cta: '', period: '',
+  });
+  const [showQr, setShowQr] = useState(true);
+  const [circlePhoto, setCirclePhoto] = useState<string | null>(null);
+  const [showCirclePhoto, setShowCirclePhoto] = useState(false);
+  const [shopInfo, setShopInfo] = useState({ name: '', phone: '', address: '', email: '' });
+  const flyerRef = useRef<HTMLDivElement>(null);
+  const generateTriggered = useRef(false);
 
-  const QUESTIONS = [
-    { key: 'businessType', question: 'お店のジャンルを教えてください', placeholder: '例: イタリアンレストラン' },
-    { key: 'businessName', question: 'お店の名前を教えてください', placeholder: '例: トラットリア ○○' },
-    { key: 'strength', question: '一番のこだわりは何ですか？', placeholder: '例: 自家製生パスタと地元野菜' },
-    { key: 'targetCustomer', question: 'どんなお客様に来てほしいですか？', placeholder: '例: 記念日デートのカップル' },
-    { key: 'areaFeature', question: 'お店のある地域の特徴は？', placeholder: '例: ○○駅から徒歩3分、商店街の中' },
-    { key: 'message', question: '最後に、何か伝えたいメッセージはありますか？', placeholder: '自由にどうぞ（スキップもOK）' },
-  ];
-
-  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [interviewStep, result]);
-
-  const handleSubmitAnswer = () => {
-    const q = QUESTIONS[interviewStep];
-    const val = currentInput.trim();
-    if (!val && interviewStep < 2) return;
-    setAnswers((prev) => ({ ...prev, [q.key]: val }));
-    setCurrentInput('');
-    if (interviewStep < QUESTIONS.length - 1) { setInterviewStep(interviewStep + 1); }
-    else { generateProfile({ ...answers, [q.key]: val }); }
+  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => setPhoto(ev.target?.result as string);
+    reader.readAsDataURL(file);
   };
 
-  const generateProfile = async (allAnswers: Record<string, string>) => {
+  const handleCirclePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => { setCirclePhoto(ev.target?.result as string); setShowCirclePhoto(true); };
+    reader.readAsDataURL(file);
+  };
+
+  const generate = async () => {
     setIsGenerating(true);
     setError('');
     try {
-      const res = await fetch('/api/generate/gbp-profile', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(allAnswers) });
+      const res = await fetch('/api/generate/flyer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ keyword, businessType, purpose: flyerPurpose, taste: selectedTaste.id, size: selectedSize.id }),
+      });
       const data = await res.json();
       if (!data.success) { setError(data.error || '生成に失敗しました'); return; }
-      setResult({ profile: data.profile });
+      setTexts({
+        catchCopy: data.flyer?.catchCopy || 'キャッチコピー',
+        subCopy: data.flyer?.subCopy || 'サブコピー',
+        bodyText: data.flyer?.bodyText || '本文テキスト',
+        couponText: data.flyer?.couponText || 'お得な特典',
+        cta: data.flyer?.cta || '詳しくはこちら',
+        period: data.flyer?.period || '期間限定',
+      });
+      setStep(4);
     } catch { setError('通信エラーが発生しました'); }
     finally { setIsGenerating(false); }
   };
+
+  const handlePublishFlyerToOpt = async () => {
+    if (!flyerRef.current) return;
+    setIsFlyerPublishing(true);
+    setFlyerPublishResult(null);
+    try {
+      const html2canvas = (await import('html2canvas')).default;
+      const canvas = await html2canvas(flyerRef.current, { scale: 2, useCORS: true });
+      const imageBase64 = canvas.toDataURL('image/png');
+      const copyText = `${texts.catchCopy}\n${texts.subCopy}\n${texts.bodyText}`;
+      const res = await fetch('/api/publish-to-opt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageBase64, contentType: 'flyer', copyText, paletteId }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setFlyerPublishResult({ success: true, message: 'pal_opt に投稿が作成されました。pal_opt で確認・投稿してください。' });
+      } else {
+        setFlyerPublishResult({ success: false, message: data.error || '投稿の作成に失敗しました' });
+      }
+    } catch {
+      setFlyerPublishResult({ success: false, message: '通信エラーが発生しました' });
+    } finally {
+      setIsFlyerPublishing(false);
+    }
+  };
+
+  // Calculate aspect ratio for canvas preview
+  const aspectRatio = selectedSize.height / selectedSize.width;
+  const canvasWidth = Math.min(500, typeof window !== 'undefined' ? window.innerWidth - 48 : 400);
+  const canvasHeight = canvasWidth * aspectRatio;
 
   return (
     <div className="h-screen flex flex-col overflow-hidden">
       <div className="flex items-center gap-3 px-4 py-3 bg-white border-b border-slate-200">
         <button onClick={onBack} className="p-2 -ml-2 hover:bg-slate-100 rounded-lg"><ArrowLeft size={18} /></button>
-        <div><p className="text-sm font-bold text-slate-800">GBP プロフィール構成</p><p className="text-[10px] text-slate-400">Googleマップで選ばれるプロフィール</p></div>
+        <div><p className="text-sm font-bold text-slate-800">チラシ制作</p><p className="text-[10px] text-slate-400">写真1枚からプロのチラシを即作成</p></div>
       </div>
+
       <div className="flex-1 overflow-y-auto custom-scrollbar p-4 md:p-6">
         <div className="max-w-lg mx-auto">
-          {!result && (
-            <div className="space-y-3">
-              {QUESTIONS.slice(0, interviewStep + 1).map((q) => (
-                <div key={q.key}>
-                  <div className="flex gap-2 mb-2">
-                    <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: ACCENT }}><MessageSquare size={14} color="white" /></div>
-                    <div className="bg-white rounded-2xl rounded-tl-sm px-4 py-2.5 border border-slate-200 max-w-[85%]"><p className="text-sm text-slate-700">{q.question}</p></div>
-                  </div>
-                  {answers[q.key] !== undefined && (
-                    <div className="flex justify-end mb-2"><div className="rounded-2xl rounded-tr-sm px-4 py-2.5 max-w-[85%]" style={{ backgroundColor: ACCENT_LIGHT }}><p className="text-sm text-slate-700">{answers[q.key] || '（スキップ）'}</p></div></div>
+
+          {/* Step 1: Size & Taste Selection */}
+          {step === 1 && (
+            <div>
+              <h2 className="text-base font-bold text-slate-800 mb-1">サイズとテイストを選択</h2>
+              <p className="text-xs text-slate-500 mb-4">チラシの仕上がりイメージを決めましょう</p>
+
+              <label className="text-xs font-bold text-slate-600 block mb-2">サイズ</label>
+              <div className="grid grid-cols-2 gap-2 mb-5">
+                {FLYER_SIZES.map((s) => (
+                  <button key={s.id} onClick={() => setSelectedSize(s)}
+                    className={`p-3 rounded-xl border-2 transition-all text-left min-h-[72px] ${selectedSize.id === s.id ? 'border-[#8CC63F] bg-[#EBF5E0]' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
+                    <p className="text-sm font-bold text-slate-700">{s.label}</p>
+                    <p className="text-[10px] text-slate-400 mt-0.5">{s.desc}</p>
+                  </button>
+                ))}
+              </div>
+
+              <label className="text-xs font-bold text-slate-600 block mb-2">テイスト（雰囲気）</label>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-5">
+                {FLYER_TASTES.map((t) => (
+                  <button key={t.id} onClick={() => setSelectedTaste(t)}
+                    className={`p-3 rounded-xl border-2 transition-all text-left min-h-[72px] ${selectedTaste.id === t.id ? 'border-[#8CC63F] bg-[#EBF5E0]' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
+                    <div className="flex gap-1 mb-1.5">
+                      <span className="w-4 h-4 rounded-full border border-white shadow-sm" style={{ backgroundColor: t.colors.primary }} />
+                      <span className="w-4 h-4 rounded-full border border-white shadow-sm" style={{ backgroundColor: t.colors.secondary }} />
+                      <span className="w-4 h-4 rounded-full border border-white shadow-sm" style={{ backgroundColor: t.colors.accent }} />
+                    </div>
+                    <p className="text-sm font-bold text-slate-700">{t.name}</p>
+                    <p className="text-[10px] text-slate-400 mt-0.5 line-clamp-1">{t.description}</p>
+                  </button>
+                ))}
+              </div>
+
+              <button onClick={() => setStep(2)}
+                className="w-full py-3 text-white text-sm font-bold rounded-xl min-h-12" style={{ backgroundColor: ACCENT }}>
+                次へ <ChevronRight className="inline ml-1" size={14} />
+              </button>
+            </div>
+          )}
+
+          {/* Step 2: Photo Upload + Keyword */}
+          {step === 2 && (
+            <div>
+              <h2 className="text-base font-bold text-slate-800 mb-1">写真とキーワードを入力</h2>
+              <p className="text-xs text-slate-500 mb-4">AIがチラシのコピーを自動生成します</p>
+
+              <div className="space-y-4">
+                {/* Photo upload */}
+                <div>
+                  <label className="text-xs font-bold text-slate-600 block mb-2">写真をアップロード</label>
+                  {photo ? (
+                    <div className="relative rounded-xl overflow-hidden border border-slate-200" style={{ height: 180 }}>
+                      <img src={photo} alt="" className="w-full h-full object-cover" />
+                      <label className="absolute bottom-2 right-2 flex items-center gap-1 px-3 py-1.5 bg-white/90 rounded-lg text-xs font-bold text-slate-700 cursor-pointer shadow-sm hover:bg-white">
+                        <Camera size={12} /> 変更
+                        <input type="file" accept="image/*" onChange={handlePhotoUpload} className="hidden" />
+                      </label>
+                    </div>
+                  ) : (
+                    <label className="flex flex-col items-center justify-center py-10 border-2 border-dashed border-slate-300 rounded-xl cursor-pointer hover:border-slate-400 transition-colors">
+                      <ImageIcon className="mb-2 text-slate-300" size={36} />
+                      <p className="text-sm font-bold text-slate-500">写真を選択</p>
+                      <p className="text-[10px] text-slate-400 mt-0.5">タップして写真をアップロード</p>
+                      <input type="file" accept="image/*" onChange={handlePhotoUpload} className="hidden" />
+                    </label>
                   )}
                 </div>
-              ))}
-              {!isGenerating && interviewStep < QUESTIONS.length && !answers[QUESTIONS[interviewStep].key] && (
-                <div className="flex gap-2 mt-4">
-                  <input type="text" value={currentInput} onChange={(e) => setCurrentInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSubmitAnswer()} placeholder={QUESTIONS[interviewStep].placeholder} className="flex-1 px-3 py-3 text-sm border border-slate-300 rounded-xl min-h-12" />
-                  <button onClick={handleSubmitAnswer} className="px-4 py-3 text-white text-sm font-bold rounded-xl min-h-12" style={{ backgroundColor: ACCENT }}>{interviewStep === QUESTIONS.length - 1 ? '生成' : '次へ'}</button>
-                </div>
-              )}
-              {isGenerating && (<div className="text-center py-6"><Loader2 className="animate-spin mx-auto mb-3" size={30} style={{ color: ACCENT }} /><p className="text-sm font-bold text-slate-700">最強のプロフィールを構成中...</p></div>)}
-              {error && <p className="text-sm text-red-500 text-center">{error}</p>}
-              <div ref={chatEndRef} />
-            </div>
-          )}
-          {result && (
-            <div className="space-y-5">
-              <div className="bg-white rounded-2xl border border-slate-200 p-4 md:p-5">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-sm font-bold text-slate-800">📍 GBPプロフィール文</h3>
-                  <CopyButton text={result.profile.text} />
-                </div>
-                <p className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">{result.profile.text}</p>
-                <div className="mt-3 flex flex-wrap gap-1">
-                  {result.profile.keywords.map((kw, i) => (<span key={i} className="text-[10px] px-2 py-0.5 rounded-full bg-[#EBF5E0] text-[#6B9E2E] font-bold">#{kw}</span>))}
-                </div>
-                {result.profile.tips && <p className="text-xs text-slate-400 mt-3 italic">💡 {result.profile.tips}</p>}
-              </div>
-              {/* GBP反映ボタン */}
-              {gbpConnected ? (
-                <button
-                  onClick={async () => {
-                    setPublishStatus('publishing');
-                    try {
-                      const res = await fetch('/api/gbp/update-profile', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ profileText: result.profile.text }) });
-                      const data = await res.json();
-                      if (data.success) { setPublishStatus('done'); setPublishMessage('GBPプロフィールに反映しました！'); }
-                      else { setPublishStatus('error'); setPublishMessage(data.error || '反映に失敗しました'); }
-                    } catch { setPublishStatus('error'); setPublishMessage('通信エラーが発生しました'); }
-                  }}
-                  disabled={publishStatus === 'publishing'}
-                  className="w-full py-3 text-white text-sm font-bold rounded-xl min-h-12 disabled:opacity-50 flex items-center justify-center gap-1"
-                  style={{ backgroundColor: publishStatus === 'done' ? '#22c55e' : '#E53935' }}>
-                  {publishStatus === 'publishing' ? <Loader2 className="animate-spin" size={16} /> : publishStatus === 'done' ? <><Check size={16} /> 反映完了！</> : <><MapPin size={14} /> GBPに反映する</>}
-                </button>
-              ) : (
-                <div className="bg-slate-50 rounded-xl p-3 text-center">
-                  <p className="text-xs text-slate-500">GBP連携が未設定です</p>
-                  <p className="text-[10px] text-slate-400">管理者にGBP連携の設定を依頼してください</p>
-                </div>
-              )}
-              {publishMessage && publishStatus === 'error' && <p className="text-xs text-red-500 text-center">{publishMessage}</p>}
 
-              <button onClick={() => { setResult(null); setAnswers({}); setInterviewStep(0); setPublishStatus('idle'); setPublishMessage(''); }} className="w-full py-3 text-sm font-bold border border-slate-300 rounded-xl min-h-12 hover:bg-slate-50">もう一度作り直す</button>
+                {/* Industry from DB */}
+                {dbIndustry && (
+                  <div className="flex items-center gap-2 p-3 bg-[#EBF5E0] rounded-xl">
+                    <span className="text-xs font-bold text-[#6B9E2E]">業種:</span>
+                    <span className="text-xs text-slate-700">{dbIndustry}</span>
+                  </div>
+                )}
+
+                {/* Circle Photo */}
+                <div>
+                  <label className="text-xs font-bold text-slate-600 block mb-2">丸型写真（スタッフ・ロゴなど）</label>
+                  <div className="flex items-center gap-3">
+                    {circlePhoto ? (
+                      <img src={circlePhoto} alt="" className="w-14 h-14 rounded-full object-cover border-2 border-[#8CC63F]" />
+                    ) : (
+                      <div className="w-14 h-14 rounded-full bg-slate-100 flex items-center justify-center border-2 border-dashed border-slate-300">
+                        <Camera size={18} className="text-slate-400" />
+                      </div>
+                    )}
+                    <div className="flex-1">
+                      <label className="inline-flex items-center gap-1 px-3 py-2 text-xs font-bold text-[#8CC63F] border border-[#8CC63F] rounded-lg cursor-pointer hover:bg-[#EBF5E0] transition-colors">
+                        <Camera size={12} /> {circlePhoto ? '写真を変更' : '写真を選択'}
+                        <input type="file" accept="image/*" onChange={handleCirclePhotoUpload} className="hidden" />
+                      </label>
+                      {circlePhoto && (
+                        <button onClick={() => { setCirclePhoto(null); setShowCirclePhoto(false); }}
+                          className="ml-2 text-[10px] text-red-400 hover:underline">削除</button>
+                      )}
+                      <p className="text-[10px] text-slate-400 mt-1">チラシ中央に丸型で表示されます</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Purpose */}
+                <div>
+                  <label className="text-xs font-bold text-slate-600 block mb-2">目的</label>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      { id: 'open', label: 'オープン告知' },
+                      { id: 'campaign', label: 'キャンペーン' },
+                      { id: 'seasonal', label: '季節イベント' },
+                      { id: 'new_menu', label: '新メニュー' },
+                      { id: 'recruit', label: '求人・採用' },
+                      { id: 'info', label: 'お知らせ' },
+                    ].map((p) => (
+                      <button key={p.id} onClick={() => setFlyerPurpose(flyerPurpose === p.id ? '' : p.id)}
+                        className={`px-3 py-2 text-xs font-bold rounded-full border-2 transition-all min-h-9 ${flyerPurpose === p.id ? 'border-[#8CC63F] bg-[#EBF5E0] text-[#6B9E2E]' : 'border-slate-200 text-slate-600 hover:border-slate-300'}`}>
+                        {p.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Keyword */}
+                <div>
+                  <label className="text-xs font-bold text-slate-600 block mb-1">キーワード</label>
+                  <input type="text" value={keyword} onChange={(e) => setKeyword(e.target.value)} placeholder="例: いちごフェア、春の新メニュー"
+                    className="w-full px-3 py-3 text-sm border border-slate-300 rounded-xl focus:outline-none focus:ring-2 min-h-12" />
+                </div>
+
+                <div className="flex gap-2">
+                  <button onClick={() => setStep(1)} className="px-4 py-3 text-sm text-slate-600 border border-slate-300 rounded-xl min-h-12 hover:bg-slate-50">戻る</button>
+                  <button onClick={() => { generateTriggered.current = false; setStep(3); }}
+                    disabled={!keyword.trim()}
+                    className="flex-1 py-3 text-white text-sm font-bold rounded-xl min-h-12 disabled:opacity-50" style={{ backgroundColor: ACCENT }}>
+                    AIに作ってもらう <Sparkles className="inline ml-1" size={14} />
+                  </button>
+                </div>
+              </div>
             </div>
           )}
+
+          {/* Step 3: Generating */}
+          {step === 3 && (() => {
+            if (!generateTriggered.current && !isGenerating && !error) { generateTriggered.current = true; generate(); }
+            return (
+              <div className="text-center py-12">
+                {isGenerating ? (
+                  <><Loader2 className="animate-spin mx-auto mb-4" size={36} style={{ color: ACCENT }} />
+                  <p className="text-sm font-bold text-slate-700">チラシのコピーを生成中...</p>
+                  <p className="text-xs text-slate-400 mt-1">最適なキャッチコピーを考えています</p></>
+                ) : error ? (
+                  <><p className="text-sm text-red-500 mb-4">{error}</p>
+                  <button onClick={() => { setError(''); generateTriggered.current = false; generate(); }} className="px-6 py-3 text-white text-sm font-bold rounded-xl min-h-12" style={{ backgroundColor: ACCENT }}>再試行する</button>
+                  <button onClick={() => { setStep(2); generateTriggered.current = false; }} className="block mx-auto mt-3 text-xs text-slate-500">入力内容を修正する</button></>
+                ) : <Loader2 className="animate-spin mx-auto" size={36} style={{ color: ACCENT }} />}
+              </div>
+            );
+          })()}
+
+          {/* Step 4: Flyer Canvas Editor */}
+          {step === 4 && (
+            <div className="space-y-4">
+              <h2 className="text-base font-bold text-slate-800 mb-1">チラシを編集</h2>
+              <p className="text-xs text-slate-500 mb-2">テキストをタップして自由に編集できます</p>
+
+              {/* Flyer Canvas — Professional Print Layout */}
+              <div className="flex justify-center">
+                <div ref={flyerRef}
+                  style={{
+                    width: canvasWidth, height: canvasHeight, position: 'relative', overflow: 'hidden',
+                    backgroundColor: selectedTaste.colors.bg,
+                    boxShadow: '0 8px 32px rgba(0,0,0,0.18)',
+                    fontFamily: selectedFont.family,
+                  }}>
+                  {/* ====== Left accent sidebar ====== */}
+                  <div style={{ position: 'absolute', top: 0, left: 0, width: canvasWidth * 0.025, height: '100%',
+                    background: `linear-gradient(180deg, ${selectedTaste.colors.accent} 0%, ${selectedTaste.colors.primary} 100%)`, zIndex: 10 }} />
+
+                  {/* ====== HERO SECTION (top ~40%) — Photo + Diagonal cut ====== */}
+                  <div style={{ position: 'relative', height: '40%', overflow: 'hidden' }}>
+                    {photo && <img src={photo} alt="" style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '120%', objectFit: 'cover' }} />}
+                    {/* Dark gradient overlay */}
+                    <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
+                      background: `linear-gradient(135deg, ${selectedTaste.colors.primary}CC 0%, transparent 50%, ${selectedTaste.colors.primary}99 100%)` }} />
+                    {/* Bottom diagonal clip */}
+                    <div style={{ position: 'absolute', bottom: -2, left: 0, width: '100%', height: canvasWidth * 0.08,
+                      backgroundColor: selectedTaste.colors.bg,
+                      clipPath: 'polygon(0 60%, 100% 0, 100% 100%, 0 100%)' }} />
+                    {/* Top-right accent circle */}
+                    <div style={{ position: 'absolute', top: -canvasWidth * 0.06, right: -canvasWidth * 0.06,
+                      width: canvasWidth * 0.28, height: canvasWidth * 0.28, borderRadius: '50%',
+                      backgroundColor: selectedTaste.colors.accent, opacity: 0.15 }} />
+                    {/* Catch copy */}
+                    <div style={{ position: 'absolute', bottom: canvasWidth * 0.08, left: canvasWidth * 0.07, right: canvasWidth * 0.05, zIndex: 2 }}>
+                      {/* Accent line above catch */}
+                      <div style={{ width: canvasWidth * 0.08, height: 3, backgroundColor: selectedTaste.colors.accent, marginBottom: canvasWidth * 0.02, borderRadius: 2 }} />
+                      <input type="text" value={texts.catchCopy} onChange={(e) => setTexts({ ...texts, catchCopy: e.target.value })}
+                        style={{ background: 'transparent', border: 'none', outline: 'none', color: '#FFFFFF',
+                          fontSize: `${canvasWidth * 0.065}px`, fontWeight: 900, width: '100%', letterSpacing: '0.03em',
+                          lineHeight: 1.15, textShadow: '0 3px 12px rgba(0,0,0,0.4), 0 1px 3px rgba(0,0,0,0.3)',
+                          overflow: 'hidden' }} />
+                      <input type="text" value={texts.subCopy} onChange={(e) => setTexts({ ...texts, subCopy: e.target.value })}
+                        style={{ background: 'transparent', border: 'none', outline: 'none', color: '#FFFFFF',
+                          fontSize: `${canvasWidth * 0.028}px`, fontWeight: 500, width: '100%', marginTop: canvasWidth * 0.012,
+                          opacity: 0.9, letterSpacing: '0.03em', textShadow: '0 1px 6px rgba(0,0,0,0.3)' }} />
+                    </div>
+                  </div>
+
+                  {/* ====== MIDDLE SECTION — 2-column: About + Shop Info ====== */}
+                  <div style={{ position: 'relative', padding: `${canvasWidth * 0.03}px ${canvasWidth * 0.07}px ${canvasWidth * 0.015}px`,
+                    backgroundColor: selectedTaste.colors.bg }}>
+                    {/* Decorative dots pattern (top-right) */}
+                    <div style={{ position: 'absolute', top: canvasWidth * 0.02, right: canvasWidth * 0.04, display: 'grid',
+                      gridTemplateColumns: `repeat(4, ${canvasWidth * 0.012}px)`, gap: canvasWidth * 0.008 }}>
+                      {Array.from({ length: 12 }).map((_, i) => (
+                        <div key={i} style={{ width: canvasWidth * 0.005, height: canvasWidth * 0.005, borderRadius: '50%',
+                          backgroundColor: selectedTaste.colors.accent, opacity: 0.2 }} />
+                      ))}
+                    </div>
+
+                    {/* 2-column grid: Left=About, Right=CirclePhoto+Access */}
+                    <div style={{ display: 'flex', gap: canvasWidth * 0.04 }}>
+                      {/* Left: About (wider) */}
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: canvasWidth * 0.015, marginBottom: canvasWidth * 0.015 }}>
+                          <div style={{ width: canvasWidth * 0.04, height: 2, backgroundColor: selectedTaste.colors.primary }} />
+                          <span style={{ fontSize: `${canvasWidth * 0.017}px`, fontWeight: 700, color: selectedTaste.colors.primary,
+                            letterSpacing: '0.2em' }}>ABOUT</span>
+                          <div style={{ flex: 1, height: 1, backgroundColor: `${selectedTaste.colors.primary}22` }} />
+                        </div>
+                        <div contentEditable suppressContentEditableWarning
+                          onBlur={(e) => setTexts({ ...texts, bodyText: e.currentTarget.innerText })}
+                          style={{ background: 'transparent', border: 'none', outline: 'none',
+                            color: selectedTaste.colors.text, fontSize: `${canvasWidth * 0.022}px`,
+                            lineHeight: 2.0, width: '100%', letterSpacing: '0.02em',
+                            paddingLeft: canvasWidth * 0.015, minHeight: canvasWidth * 0.12,
+                            borderLeft: `3px solid ${selectedTaste.colors.accent}33`,
+                            whiteSpace: 'pre-wrap', wordBreak: 'break-word' as const }}>
+                          {texts.bodyText}
+                        </div>
+                      </div>
+
+                      {/* Right: Circle Photo + Access (stacked vertically) */}
+                      {(showCirclePhoto && circlePhoto || shopInfo.name || shopInfo.phone || shopInfo.address || shopInfo.email) && (
+                        <div style={{ width: '35%', flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: canvasWidth * 0.02 }}>
+                          {/* Circle Photo */}
+                          {showCirclePhoto && circlePhoto && (
+                            <div style={{ position: 'relative' }}>
+                              <div style={{
+                                width: canvasWidth * 0.2, height: canvasWidth * 0.2, borderRadius: '50%',
+                                overflow: 'hidden', border: `3px solid ${selectedTaste.colors.accent}`,
+                                boxShadow: `0 4px 16px ${selectedTaste.colors.primary}22`
+                              }}>
+                                <img src={circlePhoto} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                              </div>
+                              <div style={{
+                                position: 'absolute', bottom: 0, right: 0,
+                                width: canvasWidth * 0.05, height: canvasWidth * 0.05, borderRadius: '50%',
+                                backgroundColor: selectedTaste.colors.accent, border: `2px solid ${selectedTaste.colors.bg}`,
+                                display: 'flex', alignItems: 'center', justifyContent: 'center'
+                              }}>
+                                <span style={{ color: '#FFF', fontSize: `${canvasWidth * 0.018}px`, fontWeight: 900 }}>✦</span>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Access Info */}
+                          {(shopInfo.name || shopInfo.phone || shopInfo.address || shopInfo.email) && (
+                            <div style={{ width: '100%' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: canvasWidth * 0.01, marginBottom: canvasWidth * 0.01 }}>
+                                <div style={{ width: canvasWidth * 0.03, height: 2, backgroundColor: selectedTaste.colors.accent }} />
+                                <span style={{ fontSize: `${canvasWidth * 0.015}px`, fontWeight: 700, color: selectedTaste.colors.accent,
+                                  letterSpacing: '0.15em' }}>ACCESS</span>
+                              </div>
+                              <div style={{ backgroundColor: `${selectedTaste.colors.primary}08`, borderRadius: 8,
+                                padding: `${canvasWidth * 0.015}px`, border: `1px solid ${selectedTaste.colors.primary}15` }}>
+                                {shopInfo.name && (
+                                  <div style={{ fontSize: `${canvasWidth * 0.02}px`, fontWeight: 700, color: selectedTaste.colors.text,
+                                    marginBottom: canvasWidth * 0.008, paddingBottom: canvasWidth * 0.006,
+                                    borderBottom: `1px solid ${selectedTaste.colors.primary}15` }}>
+                                    {shopInfo.name}
+                                  </div>
+                                )}
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: canvasWidth * 0.005 }}>
+                                  {shopInfo.phone && (
+                                    <div style={{ fontSize: `${canvasWidth * 0.016}px`, color: selectedTaste.colors.text }}>
+                                      <span style={{ color: selectedTaste.colors.accent, fontWeight: 700, marginRight: canvasWidth * 0.006,
+                                        fontSize: `${canvasWidth * 0.013}px` }}>TEL</span>
+                                      {shopInfo.phone}
+                                    </div>
+                                  )}
+                                  {shopInfo.email && (
+                                    <div style={{ fontSize: `${canvasWidth * 0.013}px`, color: selectedTaste.colors.subText, wordBreak: 'break-all' as const }}>
+                                      {shopInfo.email}
+                                    </div>
+                                  )}
+                                  {shopInfo.address && (
+                                    <div style={{ fontSize: `${canvasWidth * 0.013}px`, color: selectedTaste.colors.subText, marginTop: canvasWidth * 0.002 }}>
+                                      {shopInfo.address}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* ====== COUPON SECTION — Full-width banner style ====== */}
+                  <div style={{ position: 'relative', margin: `${canvasWidth * 0.02}px ${canvasWidth * 0.05}px`,
+                    overflow: 'hidden', borderRadius: selectedTaste.id === 'japanese' ? 2 : 16 }}>
+                    {/* Coupon background */}
+                    <div style={{
+                      background: selectedTaste.id === 'pop'
+                        ? `linear-gradient(135deg, ${selectedTaste.colors.primary} 0%, ${selectedTaste.colors.accent} 100%)`
+                        : selectedTaste.id === 'elegant'
+                        ? `linear-gradient(135deg, ${selectedTaste.colors.primary} 0%, #2A3F6A 100%)`
+                        : selectedTaste.id === 'japanese'
+                        ? selectedTaste.colors.primary
+                        : `linear-gradient(135deg, ${selectedTaste.colors.primary} 0%, ${selectedTaste.colors.secondary} 100%)`,
+                      padding: `${canvasWidth * 0.05}px ${canvasWidth * 0.06}px`,
+                      textAlign: 'center', position: 'relative',
+                    }}>
+                      {/* Corner decorations */}
+                      <div style={{ position: 'absolute', top: 0, right: 0, width: canvasWidth * 0.15, height: canvasWidth * 0.15,
+                        borderRadius: '0 0 0 100%', backgroundColor: 'rgba(255,255,255,0.08)' }} />
+                      <div style={{ position: 'absolute', bottom: 0, left: 0, width: canvasWidth * 0.1, height: canvasWidth * 0.1,
+                        borderRadius: '0 100% 0 0', backgroundColor: 'rgba(255,255,255,0.05)' }} />
+                      {/* Label */}
+                      <div style={{ display: 'inline-block', border: '1px solid rgba(255,255,255,0.5)',
+                        padding: `${canvasWidth * 0.006}px ${canvasWidth * 0.035}px`, borderRadius: 100,
+                        marginBottom: canvasWidth * 0.015 }}>
+                        <span style={{ fontSize: `${canvasWidth * 0.018}px`, fontWeight: 700, color: '#FFFFFF',
+                          letterSpacing: '0.15em' }}>SPECIAL OFFER</span>
+                      </div>
+                      {/* Coupon text */}
+                      <input type="text" value={texts.couponText} onChange={(e) => setTexts({ ...texts, couponText: e.target.value })}
+                        style={{ background: 'transparent', border: 'none', outline: 'none', color: '#FFFFFF',
+                          fontSize: `${canvasWidth * 0.042}px`, fontWeight: 900, width: '100%', textAlign: 'center',
+                          letterSpacing: '0.02em', display: 'block', overflow: 'hidden' }} />
+                      {/* Divider */}
+                      <div style={{ width: canvasWidth * 0.08, height: 2, backgroundColor: 'rgba(255,255,255,0.4)',
+                        margin: `${canvasWidth * 0.012}px auto` }} />
+                      {/* Period */}
+                      <input type="text" value={texts.period} onChange={(e) => setTexts({ ...texts, period: e.target.value })}
+                        style={{ background: 'transparent', border: 'none', outline: 'none', color: 'rgba(255,255,255,0.85)',
+                          fontSize: `${canvasWidth * 0.022}px`, fontWeight: 500, width: '100%', textAlign: 'center',
+                          display: 'block' }} />
+                    </div>
+                  </div>
+
+                  {/* ====== FOOTER — QR Codes (from admin settings) ====== */}
+                  {showQr && savedQrCodes.filter(q => q.url).length > 0 && (
+                    <div style={{ marginTop: 'auto', position: 'relative' }}>
+                      <div style={{ height: 3, background: `linear-gradient(90deg, ${selectedTaste.colors.accent}, ${selectedTaste.colors.primary}, ${selectedTaste.colors.accent})` }} />
+                      <div style={{ backgroundColor: selectedTaste.colors.primary, padding: `${canvasWidth * 0.025}px ${canvasWidth * 0.05}px` }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: canvasWidth * 0.04 }}>
+                          {savedQrCodes.filter(q => q.url).map((qr, i) => (
+                            <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: canvasWidth * 0.006 }}>
+                              <img src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qr.url)}&bgcolor=FFFFFF&color=${selectedTaste.colors.primary.replace('#','')}`}
+                                alt={qr.label} style={{ width: canvasWidth * 0.13, height: canvasWidth * 0.13, borderRadius: 4, backgroundColor: '#FFF', padding: 3 }} />
+                              <span style={{ color: '#FFFFFF', fontSize: `${canvasWidth * 0.018}px`, fontWeight: 600, letterSpacing: '0.04em' }}>{qr.label}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Taste palette switcher */}
+              <div>
+                <label className="text-xs font-bold text-slate-600 block mb-2">テイストを変更</label>
+                <div className="flex gap-2 flex-wrap">
+                  {FLYER_TASTES.map((t) => (
+                    <button key={t.id} onClick={() => setSelectedTaste(t)}
+                      className={`flex items-center gap-1.5 px-3 py-2 text-xs rounded-xl border-2 transition-all min-h-10 ${selectedTaste.id === t.id ? 'border-[#8CC63F] bg-[#EBF5E0] font-bold' : 'border-slate-200 hover:border-slate-300'}`}>
+                      <span className="w-4 h-4 rounded-full border border-white shadow-sm" style={{ backgroundColor: t.colors.primary }} />
+                      {t.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Font selector */}
+              <div>
+                <label className="text-xs font-bold text-slate-600 block mb-2">フォントを変更</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {FLYER_FONTS.map((f) => (
+                    <button key={f.id} onClick={() => setSelectedFont(f)}
+                      className={`p-2.5 rounded-xl border-2 transition-all text-center min-h-[60px] ${selectedFont.id === f.id ? 'border-[#8CC63F] bg-[#EBF5E0]' : 'border-slate-200 hover:border-slate-300'}`}>
+                      <span style={{ fontFamily: f.family, fontSize: 18, fontWeight: 700, color: '#333', display: 'block', lineHeight: 1.2 }}>{f.preview}</span>
+                      <span className="text-[10px] text-slate-500 mt-1 block">{f.name}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Shop info */}
+              <div>
+                <label className="text-xs font-bold text-slate-600 block mb-2">店舗情報</label>
+                <div className="space-y-2">
+                  <input type="text" value={shopInfo.name} onChange={(e) => setShopInfo({ ...shopInfo, name: e.target.value })}
+                    placeholder="屋号名（例: カフェ ひまわり）" className="w-full px-2 py-2 text-xs border border-slate-300 rounded-lg min-h-9" />
+                  <div className="grid grid-cols-2 gap-2">
+                    <input type="tel" value={shopInfo.phone} onChange={(e) => setShopInfo({ ...shopInfo, phone: e.target.value })}
+                      placeholder="電話番号" className="px-2 py-2 text-xs border border-slate-300 rounded-lg min-h-9" />
+                    <input type="email" value={shopInfo.email} onChange={(e) => setShopInfo({ ...shopInfo, email: e.target.value })}
+                      placeholder="メールアドレス" className="px-2 py-2 text-xs border border-slate-300 rounded-lg min-h-9" />
+                  </div>
+                  <input type="text" value={shopInfo.address} onChange={(e) => setShopInfo({ ...shopInfo, address: e.target.value })}
+                    placeholder="住所（例: 兵庫県尼崎市小中島1-2-3）" className="w-full px-2 py-2 text-xs border border-slate-300 rounded-lg min-h-9" />
+                </div>
+              </div>
+
+              {/* QR Code toggle */}
+              <div className="flex items-center justify-between p-3 bg-white rounded-xl border border-slate-200">
+                <div>
+                  <p className="text-xs font-bold text-slate-700">QRコード表示</p>
+                  {savedQrCodes.filter(q => q.url).length > 0 ? (
+                    <p className="text-[10px] text-slate-400">{savedQrCodes.filter(q => q.url).map(q => q.label).join('、')}</p>
+                  ) : (
+                    <p className="text-[10px] text-orange-400">管理者がQRコードを設定していません</p>
+                  )}
+                </div>
+                {savedQrCodes.filter(q => q.url).length > 0 && (
+                  <button onClick={() => setShowQr(!showQr)}
+                    className={`w-11 h-6 rounded-full transition-colors relative ${showQr ? 'bg-[#8CC63F]' : 'bg-slate-300'}`}>
+                    <div className={`w-5 h-5 bg-white rounded-full shadow-sm absolute top-0.5 transition-transform ${showQr ? 'left-[22px]' : 'left-[2px]'}`} />
+                  </button>
+                )}
+              </div>
+
+              {/* Circle Photo option */}
+              <div className="flex items-center justify-between p-3 bg-white rounded-xl border border-slate-200">
+                <div className="flex items-center gap-3">
+                  {circlePhoto ? (
+                    <img src={circlePhoto} alt="" className="w-8 h-8 rounded-full object-cover border-2 border-[#8CC63F]" />
+                  ) : (
+                    <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center">
+                      <Camera size={14} className="text-slate-400" />
+                    </div>
+                  )}
+                  <div>
+                    <p className="text-xs font-bold text-slate-700">丸型写真</p>
+                    <p className="text-[10px] text-slate-400">スタッフ紹介・ロゴなど</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <label className="text-[10px] text-[#8CC63F] font-bold cursor-pointer hover:underline">
+                    {circlePhoto ? '変更' : '追加'}
+                    <input type="file" accept="image/*" onChange={handleCirclePhotoUpload} className="hidden" />
+                  </label>
+                  {circlePhoto && (
+                    <button onClick={() => setShowCirclePhoto(!showCirclePhoto)}
+                      className={`w-11 h-6 rounded-full transition-colors relative ${showCirclePhoto ? 'bg-[#8CC63F]' : 'bg-slate-300'}`}>
+                      <div className={`w-5 h-5 bg-white rounded-full shadow-sm absolute top-0.5 transition-transform ${showCirclePhoto ? 'left-[22px]' : 'left-[2px]'}`} />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Action buttons */}
+              <div className="flex gap-2">
+                <label className="flex items-center justify-center gap-1 px-3 py-3 text-sm text-slate-600 border border-slate-300 rounded-xl cursor-pointer min-h-12 hover:bg-slate-50">
+                  <Camera size={14} /> 背景写真を変更
+                  <input type="file" accept="image/*" onChange={handlePhotoUpload} className="hidden" />
+                </label>
+                <button onClick={() => { generateTriggered.current = false; setStep(3); }}
+                  className="flex items-center justify-center gap-1 px-3 py-3 text-sm text-slate-600 border border-slate-300 rounded-xl min-h-12 hover:bg-slate-50">
+                  <Wand2 size={14} /> テキスト再生成
+                </button>
+              </div>
+              <button onClick={() => shareOrDownload(flyerRef, `flyer-${selectedSize.id}-${selectedTaste.id}-${Date.now()}.png`)}
+                className="w-full flex items-center justify-center gap-1 py-3 text-white text-sm font-bold rounded-xl min-h-12" style={{ backgroundColor: ACCENT }}>
+                <Download size={14} /> 保存する
+              </button>
+              {hasPalOpt && (
+                <div>
+                  <button onClick={handlePublishFlyerToOpt} disabled={isFlyerPublishing}
+                    className="w-full flex items-center justify-center gap-2 py-3 text-white text-sm font-bold rounded-xl min-h-12 disabled:opacity-50 transition-colors mt-2"
+                    style={{ backgroundColor: '#F39800' }}>
+                    {isFlyerPublishing ? <Loader2 className="animate-spin" size={14} /> : <Send size={14} />}
+                    {isFlyerPublishing ? '投稿作成中...' : '全メディアに一括投稿'}
+                  </button>
+                  {flyerPublishResult && (
+                    <p className={`text-xs text-center mt-2 ${flyerPublishResult.success ? 'text-green-600' : 'text-red-500'}`}>
+                      {flyerPublishResult.message}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
         </div>
       </div>
     </div>
   );
 }
 
-// ── Feature 5: GBP Post Generator (投稿テンプレート) ──────────────────────────
+// ── LINE Send Modal ───────────────────────────────────────────────────────────
 
-function GbpPostGenerator({ onBack }: { onBack: () => void }) {
-  const [step, setStep] = useState(1);
-  const [postType, setPostType] = useState('');
-  const [businessName, setBusinessName] = useState('');
-  const [businessType, setBusinessType] = useState('');
-  const [topic, setTopic] = useState('');
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [result, setResult] = useState<GbpPostResult | null>(null);
-  const [error, setError] = useState('');
+function LineSendModal({ coupon, onClose, lineConnected }: { coupon: CouponResult; onClose: () => void; lineConnected: boolean }) {
+  const [selectedTaste, setSelectedTaste] = useState(FLYER_TASTES[0]);
+  const [sendMode, setSendMode] = useState<'broadcast' | 'push'>('broadcast');
+  const [userIds, setUserIds] = useState('');
+  const [isSending, setIsSending] = useState(false);
+  const [result, setResult] = useState<{ success: boolean; message: string } | null>(null);
 
-  const generate = async () => {
-    setIsGenerating(true);
-    setError('');
+  const handleSend = async () => {
+    setIsSending(true);
+    setResult(null);
     try {
-      const res = await fetch('/api/generate/gbp-post', {
+      const res = await fetch('/api/line/send-message', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ postType, businessName, businessType, topic }),
+        body: JSON.stringify({
+          mode: sendMode,
+          userIds: sendMode === 'push' ? userIds.split(',').map((s) => s.trim()).filter(Boolean) : undefined,
+          coupon: {
+            hookTitle: coupon.hookTitle,
+            description: coupon.description,
+            conditions: coupon.conditions,
+            validityPeriod: coupon.validityPeriod,
+          },
+          taste: selectedTaste.id,
+        }),
       });
       const data = await res.json();
-      if (!data.success) { setError(data.error || '生成に失敗しました'); return; }
-      setResult({ post: data.post });
-      setStep(3);
-    } catch { setError('通信エラーが発生しました'); }
-    finally { setIsGenerating(false); }
+      if (data.success) {
+        setResult({ success: true, message: '送信が完了しました！' });
+      } else {
+        setResult({ success: false, message: data.error || '送信に失敗しました' });
+      }
+    } catch {
+      setResult({ success: false, message: '通信エラーが発生しました' });
+    } finally { setIsSending(false); }
   };
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden">
-      <div className="flex items-center gap-3 px-4 py-3 bg-white border-b border-slate-200">
-        <button onClick={onBack} className="p-2 -ml-2 hover:bg-slate-100 rounded-lg"><ArrowLeft size={18} /></button>
-        <div><p className="text-sm font-bold text-slate-800">GBP投稿テンプレート</p><p className="text-[10px] text-slate-400">MEOに強い投稿文をAIが作成</p></div>
-      </div>
-      <div className="flex-1 overflow-y-auto custom-scrollbar p-4 md:p-6">
-        <div className="max-w-lg mx-auto">
-          {/* Step 1: 投稿タイプ選択 */}
-          {step === 1 && (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={onClose}>
+      <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-md p-5 pb-8 max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <p className="text-sm font-bold text-slate-800">LINEでクーポンを送信</p>
+          <button onClick={onClose} className="p-1 hover:bg-slate-100 rounded"><X size={16} /></button>
+        </div>
+
+        {!lineConnected ? (
+          <div className="bg-slate-50 rounded-xl p-4 text-center">
+            <MessageCircle size={24} className="mx-auto mb-2 text-slate-300" />
+            <p className="text-sm font-bold text-slate-600">LINE連携が未設定です</p>
+            <p className="text-xs text-slate-400 mt-1">管理者に設定を依頼してください</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {/* Taste selection */}
             <div>
-              <h2 className="text-base font-bold text-slate-800 mb-1">どんな投稿を作りますか？</h2>
-              <p className="text-xs text-slate-500 mb-4">投稿タイプを選んでください</p>
-              <div className="grid grid-cols-2 gap-2">
-                {GBP_POST_TYPES.map((pt) => (
-                  <button key={pt.value} onClick={() => { setPostType(pt.value); setStep(2); }}
-                    className="p-3 rounded-xl border-2 border-slate-200 bg-white hover:border-slate-300 transition-all text-left min-h-[80px]">
-                    <pt.icon size={20} className="mb-1.5" style={{ color: '#9C27B0' }} />
-                    <p className="text-sm font-bold text-slate-700">{pt.label}</p>
-                    <p className="text-[10px] text-slate-400 mt-0.5">{pt.desc}</p>
+              <label className="text-xs font-bold text-slate-600 block mb-2">デザインテイスト</label>
+              <div className="flex gap-2 flex-wrap">
+                {FLYER_TASTES.map((t) => (
+                  <button key={t.id} onClick={() => setSelectedTaste(t)}
+                    className={`flex items-center gap-1 px-2.5 py-1.5 text-[10px] rounded-lg border-2 transition-all ${selectedTaste.id === t.id ? 'border-[#8CC63F] bg-[#EBF5E0] font-bold' : 'border-slate-200 hover:border-slate-300'}`}>
+                    <span className="w-3.5 h-3.5 rounded-full" style={{ backgroundColor: t.colors.primary }} />
+                    {t.name}
                   </button>
                 ))}
               </div>
             </div>
-          )}
 
-          {/* Step 2: 詳細入力 */}
-          {step === 2 && (
+            {/* Mini preview */}
             <div>
-              <h2 className="text-base font-bold text-slate-800 mb-1">{postType}の投稿を作成</h2>
-              <p className="text-xs text-slate-500 mb-4">店舗情報を入力してください</p>
-              <div className="space-y-4">
-                <div>
-                  <label className="text-xs font-bold text-slate-600 block mb-1">店舗名</label>
-                  <input type="text" value={businessName} onChange={(e) => setBusinessName(e.target.value)} placeholder="例: カフェ ひまわり" className="w-full px-3 py-3 text-sm border border-slate-300 rounded-xl min-h-12" />
+              <label className="text-xs font-bold text-slate-600 block mb-2">プレビュー</label>
+              <div className="rounded-xl overflow-hidden border border-slate-200" style={{ backgroundColor: selectedTaste.colors.bg }}>
+                <div style={{ ...selectedTaste.headerStyle, padding: '12px 16px' }}>
+                  <p style={{ fontSize: 14, fontWeight: 800, color: selectedTaste.headerStyle.color as string }}>{coupon.hookTitle}</p>
                 </div>
-                <div>
-                  <label className="text-xs font-bold text-slate-600 block mb-1">業種</label>
-                  <input type="text" value={businessType} onChange={(e) => setBusinessType(e.target.value)} placeholder="例: カフェ・喫茶店" className="w-full px-3 py-3 text-sm border border-slate-300 rounded-xl min-h-12" />
+                <div style={{ padding: '10px 16px', backgroundColor: selectedTaste.colors.bg }}>
+                  <p style={{ fontSize: 11, color: selectedTaste.colors.text, lineHeight: 1.6 }}>{coupon.description}</p>
                 </div>
-                <div>
-                  <label className="text-xs font-bold text-slate-600 block mb-1">トピック（任意）</label>
-                  <input type="text" value={topic} onChange={(e) => setTopic(e.target.value)} placeholder="例: 新作いちごパフェ" className="w-full px-3 py-3 text-sm border border-slate-300 rounded-xl min-h-12" />
+                <div style={{ ...selectedTaste.couponStyle, padding: '10px 16px', margin: '0 12px 8px', fontSize: 11 }}>
+                  <p>📋 {coupon.conditions}</p>
+                  <p className="mt-0.5">📅 {coupon.validityPeriod}</p>
                 </div>
-                {error && <p className="text-xs text-red-500">{error}</p>}
-                <div className="flex gap-2">
-                  <button onClick={() => setStep(1)} className="px-4 py-3 text-sm text-slate-600 border border-slate-300 rounded-xl min-h-12 hover:bg-slate-50">戻る</button>
-                  <button onClick={generate} disabled={isGenerating || !businessName.trim()} className="flex-1 py-3 text-white text-sm font-bold rounded-xl min-h-12 disabled:opacity-50" style={{ backgroundColor: ACCENT }}>
-                    {isGenerating ? <Loader2 className="animate-spin mx-auto" size={18} /> : <>AIに作ってもらう <Sparkles className="inline ml-1" size={14} /></>}
-                  </button>
+                <div style={{ ...selectedTaste.footerStyle, padding: '8px 16px', fontSize: 10 }}>
+                  <p>詳しくはタップ ▶</p>
                 </div>
               </div>
             </div>
-          )}
 
-          {/* Step 3: 結果 */}
-          {step === 3 && result && (
-            <div className="space-y-4">
-              <div className="bg-white rounded-2xl border border-slate-200 p-4 md:p-5">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-sm font-bold text-slate-800">📝 {postType}</h3>
-                  <CopyButton text={`${result.post.title}\n\n${result.post.body}\n\n${result.post.hashtags.join(' ')}`} />
-                </div>
-                <p className="text-base font-black text-slate-800 mb-2">{result.post.title}</p>
-                <p className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed mb-3">{result.post.body}</p>
-                <div className="flex flex-wrap gap-1 mb-3">
-                  {result.post.hashtags.map((tag, i) => (<span key={i} className="text-[10px] px-2 py-0.5 rounded-full bg-[#EBF5E0] text-[#6B9E2E] font-bold">{tag}</span>))}
-                </div>
-                <div className="bg-slate-50 rounded-lg p-3 space-y-1.5">
-                  <p className="text-xs font-bold text-slate-600">💡 CTA: {result.post.cta}</p>
-                  <p className="text-xs text-slate-500">📸 {result.post.photoTip}</p>
-                </div>
+            {/* Send target */}
+            <div>
+              <label className="text-xs font-bold text-slate-600 block mb-2">送信先</label>
+              <div className="space-y-2">
+                <button onClick={() => setSendMode('broadcast')}
+                  className={`w-full p-3 rounded-xl border-2 text-left text-sm transition-all min-h-12 ${sendMode === 'broadcast' ? 'border-[#8CC63F] bg-[#EBF5E0] font-bold' : 'border-slate-200 hover:border-slate-300'}`}>
+                  <span className="flex items-center gap-2"><Users size={14} /> 全員に送信（ブロードキャスト）</span>
+                </button>
+                <button onClick={() => setSendMode('push')}
+                  className={`w-full p-3 rounded-xl border-2 text-left text-sm transition-all min-h-12 ${sendMode === 'push' ? 'border-[#8CC63F] bg-[#EBF5E0] font-bold' : 'border-slate-200 hover:border-slate-300'}`}>
+                  <span className="flex items-center gap-2"><MessageCircle size={14} /> 個別に送信</span>
+                </button>
               </div>
-              <div className="flex gap-2">
-                <button onClick={() => { setStep(1); setResult(null); }} className="flex-1 py-3 text-sm font-bold border border-slate-300 rounded-xl min-h-12 hover:bg-slate-50">別の投稿を作る</button>
-                <button onClick={() => { setResult(null); generate(); }} className="flex-1 py-3 text-sm font-bold text-white rounded-xl min-h-12" style={{ backgroundColor: ACCENT }}>再生成する</button>
-              </div>
+              {sendMode === 'push' && (
+                <div className="mt-2">
+                  <label className="text-[10px] font-bold text-slate-500 block mb-1">ユーザーID（カンマ区切り）</label>
+                  <input type="text" value={userIds} onChange={(e) => setUserIds(e.target.value)}
+                    placeholder="U1234..., U5678..."
+                    className="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl min-h-10" />
+                </div>
+              )}
             </div>
-          )}
-        </div>
+
+            {/* Result message */}
+            {result && (
+              <div className={`rounded-xl p-3 text-center text-sm ${result.success ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'}`}>
+                {result.message}
+              </div>
+            )}
+
+            {/* Send button */}
+            <button onClick={handleSend}
+              disabled={isSending || (sendMode === 'push' && !userIds.trim())}
+              className="w-full py-3 text-white text-sm font-bold rounded-xl min-h-12 disabled:opacity-50 flex items-center justify-center gap-1"
+              style={{ backgroundColor: '#06C755' }}>
+              {isSending ? <Loader2 className="animate-spin" size={16} /> : <><MessageCircle size={14} /> 送信する</>}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1144,19 +1744,33 @@ function GbpPostGenerator({ onBack }: { onBack: () => void }) {
 export default function MainPage() {
   const [appState, setAppState] = useState<AppState>('login');
   const [paletteId, setPaletteId] = useState('');
-  const [gbpConnected, setGbpConnected] = useState(false);
   const [lineConnected, setLineConnected] = useState(false);
+  const [savedQrCodes, setSavedQrCodes] = useState<{ label: string; url: string }[]>([]);
+  const [industry, setIndustry] = useState('');
+  const [hasPalOpt, setHasPalOpt] = useState(false);
+
+  const loadSettings = () => {
+    fetch('/api/main/settings').then((r) => r.json()).then((s) => {
+      setLineConnected(!!s.lineConnected);
+      setSavedQrCodes(s.qrCodes || []);
+      setIndustry(s.industry || '');
+    }).catch(() => {});
+  };
+
+  const checkPalOpt = (id: string) => {
+    fetch(`/api/check-pal-opt?paletteId=${encodeURIComponent(id)}`)
+      .then((r) => r.json())
+      .then((data) => { setHasPalOpt(Boolean(data?.hasPalOpt)); })
+      .catch(() => { setHasPalOpt(false); });
+  };
 
   useEffect(() => {
     fetch('/api/main/session').then((r) => r.json()).then((data) => {
       if (data.authenticated && data.paletteId) {
         setPaletteId(data.paletteId);
         setAppState('dashboard');
-        // 連携状態を取得
-        fetch('/api/main/settings').then((r2) => r2.json()).then((s) => {
-          setGbpConnected(!!s.gbpConnected);
-          setLineConnected(!!s.lineConnected);
-        }).catch(() => {});
+        loadSettings();
+        checkPalOpt(data.paletteId);
       }
     }).catch(() => {});
   }, []);
@@ -1164,21 +1778,18 @@ export default function MainPage() {
   const handleLogin = (id: string) => {
     setPaletteId(id);
     setAppState('dashboard');
-    fetch('/api/main/settings').then((r) => r.json()).then((s) => {
-      setGbpConnected(!!s.gbpConnected);
-      setLineConnected(!!s.lineConnected);
-    }).catch(() => {});
+    loadSettings();
+    checkPalOpt(id);
   };
   const handleLogout = async () => { await fetch('/api/logout', { method: 'POST' }); setPaletteId(''); setAppState('login'); };
   const goBack = () => setAppState('dashboard');
 
   if (appState === 'login') return <LoginPanel onLogin={handleLogin} />;
   if (appState === 'dashboard') return <Dashboard onNavigate={setAppState} onLogout={handleLogout} />;
-  if (appState === 'coupon') return <CouponGenerator onBack={goBack} />;
-  if (appState === 'banner') return <BannerCanvas onBack={goBack} />;
+  if (appState === 'coupon') return <CouponGenerator onBack={goBack} lineConnected={lineConnected} hasPalOpt={hasPalOpt} paletteId={paletteId} />;
+  if (appState === 'banner') return <BannerCanvas onBack={goBack} hasPalOpt={hasPalOpt} paletteId={paletteId} />;
   if (appState === 'richmenu') return <RichMenuBuilder onBack={goBack} lineConnected={lineConnected} />;
-  if (appState === 'gbp_profile') return <GbpProfileBuilder onBack={goBack} gbpConnected={gbpConnected} />;
-  if (appState === 'gbp_post') return <GbpPostGenerator onBack={goBack} />;
+  if (appState === 'flyer') return <FlyerBuilder onBack={goBack} savedQrCodes={savedQrCodes} dbIndustry={industry} hasPalOpt={hasPalOpt} paletteId={paletteId} />;
 
   return null;
 }

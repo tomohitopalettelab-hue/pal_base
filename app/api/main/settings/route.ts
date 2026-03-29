@@ -15,11 +15,24 @@ export async function GET() {
     const paletteId = session.customerId || '';
     const settings = await getSettingsByPaletteId(paletteId);
 
+    // Fetch industry from pal_db
+    let industry = '';
+    try {
+      const baseUrl = process.env.PAL_DB_BASE_URL || 'https://pal-db.onrender.com';
+      const accRes = await fetch(`${baseUrl}/api/accounts`, { next: { revalidate: 300 } });
+      if (accRes.ok) {
+        const accData = await accRes.json();
+        const acc = (accData.accounts || []).find((a: { paletteId: string }) => a.paletteId === paletteId);
+        industry = acc?.industry || '';
+      }
+    } catch { /* ignore */ }
+
     return NextResponse.json({
-      gbpConnected: !!settings?.gbpAccessToken && !!settings?.gbpLocationId,
       lineConnected: !!settings?.lineChannelAccessToken,
+      qrCodes: settings?.qrCodes || [],
+      industry,
     });
   } catch {
-    return NextResponse.json({ gbpConnected: false, lineConnected: false });
+    return NextResponse.json({ lineConnected: false, qrCodes: [], industry: '' });
   }
 }

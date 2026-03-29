@@ -1,5 +1,10 @@
 import { palDbGet } from './pal-db-client';
 
+type PaletteServicesResponse = {
+  success: boolean;
+  serviceKeys?: string[];
+};
+
 type PalDbAccount = {
   id: string;
   paletteId: string;
@@ -148,4 +153,21 @@ export const canLoginPalBaseByPaletteId = async (paletteId: string): Promise<boo
     const planId = String(item.planId || '').trim();
     return accountId === String(account.id || '').trim() && basePlanIds.has(planId);
   });
+};
+
+export const hasPalOptService = async (paletteId: string): Promise<boolean> => {
+  const target = String(paletteId || '').trim().toUpperCase();
+  if (!target) return false;
+
+  const activeOn = todayYmd();
+  const res = await palDbGet(
+    `/api/palette-services?paletteId=${encodeURIComponent(target)}&activeOn=${encodeURIComponent(activeOn)}`,
+  );
+
+  if (!res.ok) return false;
+
+  const body: PaletteServicesResponse = await res.json().catch(() => ({ success: false }));
+  if (!body.success || !Array.isArray(body.serviceKeys)) return false;
+
+  return body.serviceKeys.some((key) => normalize(key).replace(/-/g, '_') === 'pal_opt');
 };

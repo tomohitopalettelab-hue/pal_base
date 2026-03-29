@@ -12,6 +12,7 @@ export type PalBaseSettings = {
   lineChannelAccessToken: string | null;
   lineChannelSecret: string | null;
   lineDefaultRichMenuId: string | null;
+  qrCodes: { label: string; url: string }[] | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -29,10 +30,13 @@ export const ensurePalBaseTables = async () => {
       line_channel_access_token   TEXT,
       line_channel_secret         TEXT,
       line_default_rich_menu_id   TEXT,
+      qr_codes                    TEXT,
       created_at                  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at                  TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `;
+  // Add qr_codes column if missing (migration)
+  try { await sql`ALTER TABLE pal_base_settings ADD COLUMN IF NOT EXISTS qr_codes TEXT`; } catch { /* already exists */ }
 };
 
 // ── Settings ──────────────────────────────────────────────────────────────────
@@ -46,6 +50,7 @@ const rowToSettings = (row: Record<string, unknown>): PalBaseSettings => ({
   lineChannelAccessToken: (row.line_channel_access_token as string) || null,
   lineChannelSecret: (row.line_channel_secret as string) || null,
   lineDefaultRichMenuId: (row.line_default_rich_menu_id as string) || null,
+  qrCodes: row.qr_codes ? JSON.parse(row.qr_codes as string) : null,
   createdAt: String(row.created_at || ''),
   updatedAt: String(row.updated_at || ''),
 });
@@ -69,14 +74,15 @@ export const upsertSettings = async (paletteId: string, data: Partial<Omit<PalBa
   const lineChannelAccessToken = data.lineChannelAccessToken !== undefined ? data.lineChannelAccessToken : (existing?.lineChannelAccessToken ?? null);
   const lineChannelSecret = data.lineChannelSecret !== undefined ? data.lineChannelSecret : (existing?.lineChannelSecret ?? null);
   const lineDefaultRichMenuId = data.lineDefaultRichMenuId !== undefined ? data.lineDefaultRichMenuId : (existing?.lineDefaultRichMenuId ?? null);
+  const qrCodesJson = data.qrCodes !== undefined ? JSON.stringify(data.qrCodes) : (existing?.qrCodes ? JSON.stringify(existing.qrCodes) : null);
 
   await sql`
     INSERT INTO pal_base_settings (
       id, palette_id, gbp_access_token, gbp_refresh_token, gbp_location_id,
-      line_channel_access_token, line_channel_secret, line_default_rich_menu_id
+      line_channel_access_token, line_channel_secret, line_default_rich_menu_id, qr_codes
     ) VALUES (
       ${id}, ${pid}, ${gbpAccessToken}, ${gbpRefreshToken}, ${gbpLocationId},
-      ${lineChannelAccessToken}, ${lineChannelSecret}, ${lineDefaultRichMenuId}
+      ${lineChannelAccessToken}, ${lineChannelSecret}, ${lineDefaultRichMenuId}, ${qrCodesJson}
     )
     ON CONFLICT (palette_id) DO UPDATE SET
       gbp_access_token          = EXCLUDED.gbp_access_token,
@@ -85,6 +91,7 @@ export const upsertSettings = async (paletteId: string, data: Partial<Omit<PalBa
       line_channel_access_token = EXCLUDED.line_channel_access_token,
       line_channel_secret       = EXCLUDED.line_channel_secret,
       line_default_rich_menu_id = EXCLUDED.line_default_rich_menu_id,
+      qr_codes                  = EXCLUDED.qr_codes,
       updated_at                = NOW()
   `;
 
